@@ -2,51 +2,26 @@
 import os
 import sys
 import pickle
-import subprocess
-import pandas as pd
-import math
-import time
-from itertools import combinations
 import numpy as np
-import scipy
 from scipy.stats.stats import pearsonr
-from scipy import sparse, stats
 from igraph import Graph, ADJ_UNDIRECTED
 import glob
 import nibabel as nib
 
-#set this to where your subjects are located. The SUBJECT will be replaced with your subject ID
-# 1/0
 class brain_graph:
-	def __init__(self, graph, communities,igraph_object):
-		self.graph = graph
-		self.community_array = communities
-		self.communities = array_to_listlist(communities)
-		degree = np.zeros((graph.vcount()))
-		size_array = np.zeros(graph.vcount())
-		for node_idx,node in enumerate(range(graph.vcount())):
-			size_array[node_idx] = igraph_object.sizes()[communities[node]]
-		self.community_size = size_array
-		for node_idx,node1 in enumerate(range(graph.vcount())):
-			if graph.degree(node_idx) == 0.:
-				continue
-			node_degree = 0.
-			for node2 in range(graph.vcount()):
-				node_degree = node_degree + max(graph[node1,node2],graph[node2,node1])
-			degree[node_idx] = node_degree
-		self.weighted_degree = degree
-		node_degree_by_community = np.zeros((graph.vcount(),len(self.communities)))
-		for node_idx,node1 in enumerate(range(graph.vcount())):
-			node_degree_for_community = np.zeros(len(self.communities))
-			for comm_idx,comm in enumerate(self.communities):
+	def __init__(self, VC):
+		node_degree_by_community = np.zeros((VC.graph.vcount(),len(VC.sizes())))
+		for node1 in range(VC.graph.vcount()):
+			for comm_idx in (np.unique(VC.membership)):
 				comm_total_degree = 0.
+				comm = np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1)
 				for node2 in comm:
-					comm_total_degree = comm_total_degree + max(graph[node1,node2],graph[node2,node1])
-				node_degree_by_community[node_idx,comm_idx] = comm_total_degree
+					comm_total_degree = comm_total_degree + max(VC.graph[node1,node2],VC.graph[node2,node1])
+				node_degree_by_community[node1,comm_idx] = comm_total_degree
 		self.node_degree_by_community = node_degree_by_community
-		pc_array = np.zeros(graph.vcount())
-		for node in range(graph.vcount()):
-		    node_degree = self.weighted_degree[node]
+		pc_array = np.zeros(VC.graph.vcount())
+		for node in range(VC.graph.vcount()):
+		    node_degree = VC.graph.strength(node,weights='weight')
 		    if node_degree == 0.0: 
 		        pc_array[node]= np.nan
 		        continue    
@@ -56,10 +31,11 @@ class brain_graph:
 		    pc = 1 - pc
 		    pc_array[int(node)] = float(pc)
 		self.pc = pc_array
+		self.community = VC
 
 def load_subject_time_series(subject_dir):
 	"""
-	returns a 4d array of the epi files.
+	returns a 4d array of the subject_time_series files.
 	loads original file in data_dir 
 	or a resampled file if mm = 3 or 4
 	"""
@@ -68,13 +44,13 @@ def load_subject_time_series(subject_dir):
 		print 'loading: ' + str(img_file)
 		reorient(image=img_file, orientation='RPI')
 		if block == 0:
-			epi_data = nib.load(img_file).get_data().astype('float32') # move up
+			subject_time_series_data = nib.load(img_file).get_data().astype('float32') # move up
 			continue 
-		new_epi_data = nib.load(img_file).get_data().astype('float32')
-		epi_data = np.concatenate((epi_data,new_epi_data),axis =3)
-	return epi_data
+		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
+		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
+	return subject_time_series_data
 
-def time_series_to_matrix(subject_time_series,parcel,voxel=False,low_tri_only=False,sparse=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
+def time_series_to_matrix(subject_time_series,parcel,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
 	"""
 	Makes correlation matrix from parcel
 	If voxel == true, masks the subject_time_series with the parcel 
@@ -106,7 +82,7 @@ def time_series_to_matrix(subject_time_series,parcel,voxel=False,low_tri_only=Fa
 		ts = dict()
 		for i in range(np.max(parcel)):
 			ts[i] = np.mean(subject_time_series[parcel==i+1],axis = 0)
-		g = scipy.sparse.lil_matrix((len(ts),len(ts)))	
+		g = np.zeros((len(ts),len(ts)))	
 		for edge in combinations(ts.keys(),2):
 			i2 = min(edge)
 			i1 = max(edge)
@@ -117,51 +93,22 @@ def time_series_to_matrix(subject_time_series,parcel,voxel=False,low_tri_only=Fa
 					g[i2,i1] = correlation
 		if fisher == True:
 			g = np.arctanh(g)
-		if sparse == False:
-			g = g.todense()
 	return g
 
-def relabel_part(lp):
-	# 0 index is for nodes without a module
-	non_empty_modules = []
-	new_lp= []
-	lp = lp + 1
-	for i in range(1,int(max(lp)+1)):
-		if len(lp[lp==i]) > 0.:
-			non_empty_modules.append(i)
-	translation_dict = {}
-	translation_dict[0] = 0
-	for i,module in enumerate(non_empty_modules):
-		translation_dict[module] = i + 1
-	for i in lp:
-		new_lp.append(translation_dict[i])
-	return np.array(new_lp)
-
-def scipy_to_igraph(matrix, cost, directed=False):
-	"""
-	must be only the lower triangle!
-	"""
-	tot_edges = (((matrix.shape[0]))*(((matrix.shape[0]))-1))/2.    
-	df = pd.DataFrame()
-	df['Sources'],df['Targets'] = matrix.nonzero()
-	df['Weights'] = matrix[df.Sources,df.Targets].data[0]
-	del matrix
-	n_nonzero = cost * tot_edges
-	df.sort(columns='Weights',ascending=False,inplace=True)
-	df = df.reset_index()
-	threshold = df.Weights[int(np.round(n_nonzero))+1]
-	df = df[df.Weights >= threshold]
-	return Graph(zip(df.Sources.values, df.Targets.values), directed=directed, edge_attrs={'weight': df.Weights.values})
-
-def threshold_matrix(matrix,cost,check_tri=True,lower_tri_only=False):
-	c_cost_int = 100 - (cost*100)
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
+	matrix[np.isnan(matrix)] = 0
+	c_cost_int = 100-(cost*100)
 	if check_tri == True:
 		if np.sum(np.triu(matrix)) == 0.0 or np.sum(np.tril(matrix)) == 0.0:
-			c_cost_int = 100 - ((cost/2.)*100)
-	matrix[matrix<np.percentile(matrix,c_cost_int,interpolation='nearest')] = 0
-	return matrix
+			c_cost_int = 100.-((cost/2.)*100.)
+	if c_cost_int > 0:
+		matrix[matrix<np.percentile(matrix,c_cost_int,interpolation='nearest')] = 0
+	if binary == True:
+		matrix[matrix>0] = 1
+	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
+	return g
 
-def make_graph(subject,num_nodes=1000,atlas='ward'):
+def recursive_network_partition(subject,num_nodes=1000,atlas='ward'):
 	t1 = time.time()
 	if atlas == 'ward':
 		parcel = glob.glob('/home/despoB/mb3152/nodeless_networks/nodes/nodes_%s_%s.nii'%(subject,num_nodes))[0]
