@@ -10,7 +10,7 @@ nibabel $pip install nibabel
 
 Example 1:
 
-~Load EPI and reduce to a time series of nodes /
+~Load EPI and reduce to a time series of nodes
 subject_time_series = load_subject_time_series(subject_path='path/to/where/epi/files/live/*')
 
 ~Turn that into a correlation matrix based on parcellation
