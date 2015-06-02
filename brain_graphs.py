@@ -1,4 +1,5 @@
 #!/home/despoB/mb3152/anaconda/bin/python
+
 import os
 import sys
 import pickle
@@ -9,6 +10,7 @@ from scipy.stats.stats import pearsonr
 from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
 from itertools import combinations
+
 
 class brain_graph:
 	def __init__(self, VC):
