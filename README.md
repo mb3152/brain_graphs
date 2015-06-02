@@ -1,7 +1,7 @@
 # brain_graphs
 Graph theory analysis of resting-state fMRI data. Just a light class to summarize igraph (python) community detection object and the igraph graph object. Calculates Participation Coefficient(PC) and Within-Module-Degree Z-Score(WMD). 
 
-All graphs are weights unless passed a binarized Matrix.
+All graphs are weighted unless passed a binarized Matrix.
 
 Requires two non-standard (i.e., not with anaconda distribution) libraries:
 python-igraph $pip install python-igraph)
