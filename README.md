@@ -10,6 +10,7 @@ python-igraph $pip install python-igraph
 nibabel $pip install nibabel
 
 Example 1:
+
 ~Load EPI and reduce to a time series of nodes
 subject_time_series = load_subject_time_series(subject_path='path/to/where/epi/files/live/*')
 ~Turn that into a correlation matrix based on parcellation
@@ -23,5 +24,6 @@ community_array = community.membership
 brain_graph = brain_graph(community_object)
 
 Example 2:
+
 ~do all over the above, but recursively find communities from all costs (a la Power et al, 2011)
 brain_graph = recrusive_network_partition(subject_path='path/to/where/epi/files/live/*',graph_cost=.1,min_community_size=10)
