@@ -7,7 +7,7 @@ import glob
 import numpy as np
 import numpy.testing as npt
 from scipy.stats.stats import pearsonr
-from igraph import Graph, ADJ_UNDIRECTED
+from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
 from itertools import combinations
 
@@ -139,7 +139,6 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 	cost = max_cost
 	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
-		print cost
 		graph = matrix_to_igraph(matrix,cost=cost)
 		partition = graph.community_infomap(edge_weights='weight')
 		connected_nodes = []
@@ -173,3 +172,4 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 	for community_number,community in enumerate(communities):
 		for node in community:
 			final_communitites[node] = community_number
+	return brain_graph(VertexClustering(final_graph, membership=final_communitites))
