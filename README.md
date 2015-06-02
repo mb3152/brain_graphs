@@ -4,7 +4,9 @@ Graph theory analysis of resting-state fMRI data. Just a light class to summariz
 All graphs are weighted unless passed a binarized Matrix.
 
 Requires two non-standard (i.e., not with anaconda distribution) libraries:
-python-igraph $pip install python-igraph)
+
+python-igraph $pip install python-igraph
+
 nibabel $pip install nibabel
 
 Example 1:
