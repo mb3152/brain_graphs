@@ -15,11 +15,10 @@ class brain_graph:
 		for node1 in range(VC.graph.vcount()):
 			for comm_idx in (np.unique(VC.membership)):
 				comm_total_degree = 0.
-				comm = np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1)
-				for node2 in comm:
+				for node2 in np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1):
 					comm_total_degree = comm_total_degree + max(VC.graph[node1,node2],VC.graph[node2,node1])
 				node_degree_by_community[node1,comm_idx] = comm_total_degree
-		self.node_degree_by_community = node_degree_by_community
+		node_degree_by_community[np.argwhere(np.max(node_degree_by_community,axis=1)==0),:] = np.nan
 		pc_array = np.zeros(VC.graph.vcount())
 		for node in range(VC.graph.vcount()):
 		    node_degree = VC.graph.strength(node,weights='weight')
@@ -27,12 +26,25 @@ class brain_graph:
 		        pc_array[node]= np.nan
 		        continue    
 		    pc = 0.0
-		    for comm_degree in self.node_degree_by_community[node]:
+		    for comm_degree in node_degree_by_community[node]:
 		        pc = pc + ((float(comm_degree)/float(node_degree))**2)
 		    pc = 1 - pc
 		    pc_array[int(node)] = float(pc)
 		self.pc = pc_array
+		wmd_array = np.zeros(VC.graph.vcount())
+		for comm_idx in (np.unique(VC.membership)):
+			comm = np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1)
+			comm_std = np.nanstd(node_degree_by_community[comm,comm_idx])
+			comm_mean = np.nanmean(node_degree_by_community[comm,comm_idx])
+			for node in comm:
+				node_degree = node_degree_by_community[node,comm_idx]
+				if node_degree == 0.0:
+					wmd_array[node] = np.nan
+					continue
+				wmd_array[node] = (node_degree-comm_mean) / comm_std
+		self.wmd = wmd_array
 		self.community = VC
+		self.node_degree_by_community = node_degree_by_community
 
 def load_subject_time_series(subject_dir):
 	"""
@@ -43,7 +55,6 @@ def load_subject_time_series(subject_dir):
 	files = glob.glob(subject_dir)
 	for block,img_file in enumerate(files):
 		print 'loading: ' + str(img_file)
-		reorient(image=img_file, orientation='RPI')
 		if block == 0:
 			subject_time_series_data = nib.load(img_file).get_data().astype('float32') # move up
 			continue 
