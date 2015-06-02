@@ -68,7 +68,7 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_on
 	Makes correlation matrix from parcel
 	If voxel == true, masks the subject_time_series with the parcel 
 	and runs voxel correlation on those voxels. Ignores touching voxels.
-	Only fills the lower triangle! Saves memory.
+	low_tri_only: only fills the lower triangle to save memory.
 	"""
 	parcel = nib.load(parcel_path).get_data()
 	if voxel == True:
@@ -127,10 +127,12 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 	"""
 	Combines network partitions across costs (Power et al, 2011)
 	Starts at max_cost, finds partitions that nodes are in,
-	decreases density to find smaller partitions, but keeps 
+	slowly decreases density to find smaller partitions, but keeps 
 	information (from higher densities) about nodes that become disconnected.
 
-	Runs nodal roles on one cost(graph_cost), but with final partition.
+	Runs nodal roles on one cost (graph_cost), but with final partition.
+
+	Returns brain_graph object.
 	"""
 	subject_time_series_data = load_subject_time_series(subject_path)
 	matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)

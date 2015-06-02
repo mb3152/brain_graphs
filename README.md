@@ -6,21 +6,17 @@ All graphs are weighted unless passed a binarized Matrix.
 Requires two non-standard (i.e., not with anaconda distribution) libraries:
 
 python-igraph $pip install python-igraph
-
 nibabel $pip install nibabel
 
 Example 1:
 
 ~Load EPI and reduce to a time series of nodes
-
 subject_time_series = load_subject_time_series(subject_path='path/to/where/epi/files/live/*')
 
 ~Turn that into a correlation matrix based on parcellation
-
 matrix = time_series_to_matrix(subject_time_series,parcel_path='path/to/brain/atlas/atlas.nii')
 
 ~make graph from matrix
-
 graph = matrix_to_igraph(matrix,cost=0.1)
 
 ~get community detection results
