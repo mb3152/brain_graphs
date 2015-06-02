@@ -123,21 +123,21 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
-def recursive_network_partition(subject_path,parcel_path,nodal_role_cost=.1,max_cost=.3,min_cost=0.01,min_community_size=5):
+def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5):
 	"""
 	Combines network partitions across costs (Power et al, 2011)
 	Starts at max_cost, finds partitions that nodes are in,
 	decreases density to find smaller partitions, but keeps 
 	information (from higher densities) about nodes that become disconnected.
 
-	Runs nodal roles on one cost, but with final partition.
+	Runs nodal roles on one cost(graph_cost), but with final partition.
 	"""
 	subject_time_series_data = load_subject_time_series(subject_path)
 	matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)
 	final_matrix = np.zeros(matrix.shape)
 	# del subject_time_series_data
 	cost = max_cost
-	pc_graph = matrix_to_igraph(matrix,cost=nodal_role_cost)
+	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
 		print cost
 		graph = matrix_to_igraph(matrix,cost=cost)
@@ -160,9 +160,16 @@ def recursive_network_partition(subject_path,parcel_path,nodal_role_cost=.1,max_
 		for edge in between_community_edges:
 			final_matrix[edge[0],edge[1]] = 0
 			final_matrix[edge[1],edge[0]] = 0
-		cost = cost - 0.01
 		if cost < min_cost:
 			break
-	final_communitites = np.zeros()
+		cost = cost - 0.01
+	final_communitites = np.zeros(partition.graph.vcount())
+	np.fill_diagonal(final_matrix,1)
+	communities = []
 	for node in range(partition.graph.vcount()):
-		np.argwhere(final_matrix[:,node]==1)
+		community = list(np.where(final_matrix[:,node]==1)[0])
+		if community not in communities:
+			communities.append(community)
+	for community_number,community in enumerate(communities):
+		for node in community:
+			final_communitites[node] = community_number
