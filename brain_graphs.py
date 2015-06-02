@@ -3,11 +3,13 @@
 import os
 import sys
 import pickle
+import glob
 import numpy as np
+import numpy.testing as npt
 from scipy.stats.stats import pearsonr
 from igraph import Graph, ADJ_UNDIRECTED
-import glob
 import nibabel as nib
+from itertools import combinations
 
 class brain_graph:
 	def __init__(self, VC):
@@ -46,13 +48,12 @@ class brain_graph:
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
 
-def load_subject_time_series(subject_dir):
+def load_subject_time_series(subject_path):
 	"""
 	returns a 4d array of the subject_time_series files.
-	loads original file in data_dir 
-	or a resampled file if mm = 3 or 4
+	loads original file in subject_path
 	"""
-	files = glob.glob(subject_dir)
+	files = glob.glob(subject_path)
 	for block,img_file in enumerate(files):
 		print 'loading: ' + str(img_file)
 		if block == 0:
@@ -62,13 +63,14 @@ def load_subject_time_series(subject_dir):
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
-def time_series_to_matrix(subject_time_series,parcel,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
+def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
 	"""
 	Makes correlation matrix from parcel
 	If voxel == true, masks the subject_time_series with the parcel 
 	and runs voxel correlation on those voxels. Ignores touching voxels.
 	Only fills the lower triangle! Saves memory.
 	"""
+	parcel = nib.load(parcel_path).get_data()
 	if voxel == True:
 		flat_parcel = parcel.reshape(-1)
 		shape = parcel.shape
@@ -118,60 +120,49 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	if binary == True:
 		matrix[matrix>0] = 1
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
+	npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
-def recursive_network_partition(subject,num_nodes=1000,atlas='ward'):
-	t1 = time.time()
-	if atlas == 'ward':
-		parcel = glob.glob('/home/despoB/mb3152/nodeless_networks/nodes/nodes_%s_%s.nii'%(subject,num_nodes))[0]
-	else:
-		parcel = '/home/despoB/mb3152/nodeless_networks/real_atlases/4mm_%s_template.nii'%(atlas)
-	subject_time_series_data = load_sub_data(subject,mm=4)
-	parcel = nib.load(parcel).get_data()
-	matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel=parcel)
-	del subject_time_series_data
-	cost = 0.25
-	temp_matrix = np.zeros((matrix.shape[0],matrix.shape[0]))
-	pc_matrix = threshold_matrix(matrix,.1)
-	pc_graph = Graph.Weighted_Adjacency(pc_matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	del pc_matrix
-	while cost > 0.009:
+def recursive_network_partition(subject_path,parcel_path,nodal_role_cost=.1,max_cost=.3,min_cost=0.01,min_community_size=5):
+	"""
+	Combines network partitions across costs (Power et al, 2011)
+	Starts at max_cost, finds partitions that nodes are in,
+	decreases density to find smaller partitions, but keeps 
+	information (from higher densities) about nodes that become disconnected.
+
+	Runs nodal roles on one cost, but with final partition.
+	"""
+	subject_time_series_data = load_subject_time_series(subject_path)
+	matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)
+	final_matrix = np.zeros(matrix.shape)
+	# del subject_time_series_data
+	cost = max_cost
+	pc_graph = matrix_to_igraph(matrix,cost=nodal_role_cost)
+	while True:
 		print cost
-		matrix = threshold_matrix(matrix,cost)
-		g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-		g = g.community_infomap(edge_weights='weight')
-		part_object = partition_no_pc(g.graph,g.membership,g)
-		real_nodes = []
-		for node in range(part_object.graph.vcount()):
-			if part_object.graph.degree([node]) > 0:
-				if part_object.community_size[node] > 10:
- 					real_nodes.append(node)
-		same_edges = []
-		diff_edges = []
-		for edge in combinations(real_nodes,2):
-			if part_object.community_array[edge[0]] == part_object.community_array[edge[1]]:
-				same_edges.append(edge)
+		graph = matrix_to_igraph(matrix,cost=cost)
+		partition = graph.community_infomap(edge_weights='weight')
+		connected_nodes = []
+		for node in range(partition.graph.vcount()):
+			if partition.graph.strength(node,weights='weight') > 0.:
+				if partition.sizes()[partition.membership[node]] > min_community_size:
+ 					connected_nodes.append(node)
+		community_edges = []
+		between_community_edges = []
+		for edge in combinations(connected_nodes,2):
+			if partition.membership[edge[0]] == partition.membership[edge[1]]:
+				community_edges.append(edge)
 			else:
-				diff_edges.append(edge)
-		for i,edge in enumerate(same_edges):
-			temp_matrix[edge[0],edge[1]] = 1
-			temp_matrix[edge[1],edge[0]] = 1
-		for i,edge in enumerate(diff_edges):
-			temp_matrix[edge[0],edge[1]] = 0
-			temp_matrix[edge[1],edge[0]] = 0
-		if cost > .1:
-			cost = cost - .01
-		elif cost > 0.05:
-			cost = cost - 0.005
-		else:
-			cost = cost - 0.001
-	g = Graph.Weighted_Adjacency(temp_matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	g = g.community_infomap(edge_weights='weight')
-	part_object = partition(pc_graph,g.membership,g)
-	part_object.c_matrix = temp_matrix
-	if atlas == 'ward':
-		fill_ward_voxel_matrix(part_object,parcel,subject,cost,num_nodes)
-	else:
-		fill_real_voxel_matrix(part_object,parcel,subject,cost,num_nodes,atlas)
-	print time.time() - t1
-	pickle.dump(part_object, open( "/home/despoB/mb3152/nodeless_networks/graphs/partition_%s_%s_%s.p" %(subject,num_nodes,atlas), "wb" ))
+				between_community_edges.append(edge)
+		for edge in community_edges:
+			final_matrix[edge[0],edge[1]] = 1
+			final_matrix[edge[1],edge[0]] = 1
+		for edge in between_community_edges:
+			final_matrix[edge[0],edge[1]] = 0
+			final_matrix[edge[1],edge[0]] = 0
+		cost = cost - 0.01
+		if cost < min_cost:
+			break
+	final_communitites = np.zeros()
+	for node in range(partition.graph.vcount()):
+		np.argwhere(final_matrix[:,node]==1)
