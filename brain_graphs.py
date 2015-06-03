@@ -1,5 +1,4 @@
 #!/home/despoB/mb3152/anaconda/bin/python
-
 import os
 import sys
 import pickle
@@ -10,7 +9,6 @@ from scipy.stats.stats import pearsonr
 from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
 from itertools import combinations
-
 
 class brain_graph:
 	def __init__(self, VC):
@@ -121,7 +119,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	if binary == True:
 		matrix[matrix>0] = 1
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
+	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
 def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5):
@@ -175,4 +173,4 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 	for community_number,community in enumerate(communities):
 		for node in community:
 			final_communitites[node] = community_number
-	return brain_graph(VertexClustering(final_graph, membership=final_communitites))
+	return brain_graph(VertexClustering(final_graph, membership=np.array(final_communitites,dtype=int)))
