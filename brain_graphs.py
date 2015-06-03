@@ -42,6 +42,9 @@ class brain_graph:
 				if node_degree == 0.0:
 					wmd_array[node] = np.nan
 					continue
+				if comm_std == 0.0:
+					wmd_array[node] = (node_degree-comm_mean)
+					continue	
 				wmd_array[node] = (node_degree-comm_mean) / comm_std
 		self.wmd = wmd_array
 		self.community = VC
