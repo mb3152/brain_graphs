@@ -170,4 +170,4 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 		cost = cost - 0.01
 	graph = matrix_to_igraph(matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
-	return brain_graph(VertexClustering(final_graph, membership=partition.membership)
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
