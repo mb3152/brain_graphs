@@ -51,6 +51,10 @@ class brain_graph:
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
 
+def load_graph(path_to_graph):
+	f = open('%s' %(path_to_graph),'r')
+	return pickle.load(f)
+
 def load_subject_time_series(subject_path):
 	"""
 	returns a 4d array of the subject_time_series files.
@@ -127,8 +131,10 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
-def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5):
+def recursive_network_partition(subject_paths,parcel_path,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5):
 	"""
+	subject_past: list of paths to subject file or files
+
 	Combines network partitions across costs (Power et al, 2011)
 	Starts at max_cost, finds partitions that nodes are in,
 	slowly decreases density to find smaller partitions, but keeps 
@@ -138,10 +144,13 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 
 	Returns brain_graph object.
 	"""
-	subject_time_series_data = load_subject_time_series(subject_path)
-	matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)
+	
+	matrix = []
+	for subject_path in subject_paths:
+		subject_time_series_data = load_subject_time_series(subject_path)
+		matrix.append(time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path))
+	matrix = np.nanmean(matrix,axis=0)
 	final_matrix = np.zeros(matrix.shape)
-	# del subject_time_series_data
 	cost = max_cost
 	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
@@ -168,6 +177,6 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 		if cost < min_cost:
 			break
 		cost = cost - 0.01
-	graph = matrix_to_igraph(matrix,cost=1.)
+	graph = matrix_to_igraph(final_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
