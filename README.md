@@ -36,4 +36,4 @@ Example 2:
 
 ~do all over the above, but recursively find communities from all costs (a la Power et al, 2011)
 
-brain_graph = recrusive_network_partition(subject_path='/path/to/where/epi/files/live/*.nii',graph_cost=.1,min_community_size=10)
+brain_graph = recrusive_network_partition(subject_path='/path/to/where/epi/files/live/*.nii',parcel_path='path/to/brain/atlas/atlas.nii',graph_cost=.1,min_community_size=10)
