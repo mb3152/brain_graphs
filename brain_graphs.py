@@ -38,14 +38,15 @@ class brain_graph:
 			comm_std = np.nanstd(node_degree_by_community[comm,comm_idx])
 			comm_mean = np.nanmean(node_degree_by_community[comm,comm_idx])
 			for node in comm:
-				node_degree = node_degree_by_community[node,comm_idx]
+				node_degree = VC.graph.strength(node,weights='weight')
+				comm_node_degree = node_degree_by_community[node,comm_idx]
 				if node_degree == 0.0:
 					wmd_array[node] = np.nan
 					continue
 				if comm_std == 0.0:
-					wmd_array[node] = (node_degree-comm_mean)
+					wmd_array[node] = (comm_node_degree-comm_mean)
 					continue	
-				wmd_array[node] = (node_degree-comm_mean) / comm_std
+				wmd_array[node] = (comm_node_degree-comm_mean) / comm_std
 		self.wmd = wmd_array
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
@@ -63,6 +64,7 @@ def load_subject_time_series(subject_path):
 			continue 
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
+	# if 
 	return subject_time_series_data
 
 def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
@@ -166,14 +168,6 @@ def recursive_network_partition(subject_path,parcel_path,graph_cost=.1,max_cost=
 		if cost < min_cost:
 			break
 		cost = cost - 0.01
-	final_communitites = np.zeros(partition.graph.vcount())
-	np.fill_diagonal(final_matrix,1)
-	communities = []
-	for node in range(partition.graph.vcount()):
-		community = list(np.where(final_matrix[:,node]==1)[0])
-		if community not in communities:
-			communities.append(community)
-	for community_number,community in enumerate(communities):
-		for node in community:
-			final_communitites[node] = community_number
-	return brain_graph(VertexClustering(final_graph, membership=np.array(final_communitites,dtype=int)))
+	graph = matrix_to_igraph(matrix,cost=1.)
+	partition = graph.community_infomap(edge_weights='weight')
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership)
