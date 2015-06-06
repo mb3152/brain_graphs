@@ -128,6 +128,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	if binary == True:
 		matrix[matrix>0] = 1
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
+	print 'density: ' + str(g.density()) 
 	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
@@ -150,6 +151,7 @@ def recursive_network_partition(subject_paths,parcel_path,graph_cost=.1,max_cost
 		subject_time_series_data = load_subject_time_series(subject_path)
 		matrix.append(time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path))
 	matrix = np.nanmean(matrix,axis=0)
+	matrix[matrix<0] = 0.0
 	final_matrix = np.zeros(matrix.shape)
 	cost = max_cost
 	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
