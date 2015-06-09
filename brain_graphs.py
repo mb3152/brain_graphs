@@ -152,6 +152,7 @@ def recursive_network_partition(subject_paths,parcel_path,graph_cost=.1,max_cost
 		matrix.append(time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path))
 	matrix = np.nanmean(matrix,axis=0)
 	matrix[matrix<0] = 0.0
+	np.fill_diagonal(matrix,0)
 	final_edge_matrix = matrix.copy()
 	final_matrix = np.zeros(matrix.shape)
 	cost = max_cost
@@ -179,7 +180,10 @@ def recursive_network_partition(subject_paths,parcel_path,graph_cost=.1,max_cost
 			final_matrix[edge[1],edge[0]] = 0
 		if cost < min_cost:
 			break
-		cost = cost - 0.01
+		if cost <= .1:
+			cost = cost - 0.005
+		if cost > .1:
+			cost = cost - 0.01
 	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership)),matrix
