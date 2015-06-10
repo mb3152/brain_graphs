@@ -76,16 +76,14 @@ def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
 	eng = matlab.engine.start_matlab()
 	eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
 	"""
-	If voxel == true, masks the subject_time_series with the parcel 
-	and runs voxel correlation on those voxels. Ignores touching voxels.
-	low_tri_only: only fills the lower triangle to save memory.
+	runs DCC method from M Lindquist
 	"""
 	parcel = nib.load(parcel_path).get_data()
 	ts = np.zeros((np.max(parcel)+1,subject_time_series.shape[3]))
 	for i in range(np.max(parcel)):
 		ts[i,:] = z_score(np.mean(subject_time_series[parcel==i+1],axis = 0))
 	matrices = eng.DCC(matlab.double(ts.tolist()))
-	np.save(out_file,np.array(matrices),)
+	np.save(out_file,np.array(matrices))
 
 def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
 	"""
