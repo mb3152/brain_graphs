@@ -68,8 +68,24 @@ def load_subject_time_series(subject_path):
 			continue 
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
-	# if 
 	return subject_time_series_data
+
+def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
+	import matlab.engine
+	from scipy.stats.mstats import zscore as z_score
+	eng = matlab.engine.start_matlab()
+	eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
+	"""
+	If voxel == true, masks the subject_time_series with the parcel 
+	and runs voxel correlation on those voxels. Ignores touching voxels.
+	low_tri_only: only fills the lower triangle to save memory.
+	"""
+	parcel = nib.load(parcel_path).get_data()
+	ts = np.zeros((np.max(parcel)+1,subject_time_series.shape[3]))
+	for i in range(np.max(parcel)):
+		ts[i,:] = z_score(np.mean(subject_time_series[parcel==i+1],axis = 0))
+	matrices = eng.DCC(matlab.double(ts.tolist()))
+	np.save(out_file,np.array(matrices),)
 
 def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
 	"""
