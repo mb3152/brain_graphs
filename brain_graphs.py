@@ -1,6 +1,7 @@
 #!/home/despoB/mb3152/anaconda/bin/python
 import os
 import sys
+import matlab.engine
 import pickle
 import glob
 import numpy as np
@@ -9,6 +10,7 @@ from scipy.stats.stats import pearsonr
 from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
 from itertools import combinations
+import pandas as pd
 
 class brain_graph:
 	def __init__(self, VC):
@@ -70,8 +72,20 @@ def load_subject_time_series(subject_path):
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
+def time_series_to_ewmf_matrix(subject_time_series,parcel_path,window_size,out_file):
+	"""
+	runs exponentially weighted moment functions via Pandas
+	"""
+	parcel = nib.load(parcel_path).get_data()
+	ts = np.zeros((np.max(parcel),subject_time_series.shape[3]))
+	ts = dict()
+	for i in range(np.max(parcel)):
+		ts[i] = np.mean(subject_time_series[parcel==i+1],axis = 0)
+	ts = pd.DataFrame(ts)
+	matrix = pd.ewmcorr(ts,span=window_size)
+	np.save(out_file,np.array(matrices))
+
 def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
-	import matlab.engine
 	from scipy.stats.mstats import zscore as z_score
 	eng = matlab.engine.start_matlab()
 	eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
@@ -79,10 +93,11 @@ def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
 	runs DCC method from M Lindquist
 	"""
 	parcel = nib.load(parcel_path).get_data()
-	ts = np.zeros((np.max(parcel)+1,subject_time_series.shape[3]))
+	ts = np.zeros((np.max(parcel),subject_time_series.shape[3]))
 	for i in range(np.max(parcel)):
 		ts[i,:] = z_score(np.mean(subject_time_series[parcel==i+1],axis = 0))
-	matrices = eng.DCC(matlab.double(ts.tolist()))
+	ts = ts.swapaxes(0,1)
+	matrices = eng.mvDCC(matlab.double(ts.tolist()))
 	np.save(out_file,np.array(matrices))
 
 def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,low_tri_only=False,fisher=False,out_file='/home/despoB/mb3152/voxel_matrices/'):
