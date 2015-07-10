@@ -13,12 +13,13 @@ import nibabel as nib
 from itertools import combinations
 import pandas as pd
 
-def load_matlab_bct(matlab_library):
+def load_matlab_toolbox(matlab_library):
 	eng = matlab.engine.start_matlab()
 	if matlab_library == 'bct':
 		eng.addpath('/home/despoB/mb3152/brain_graphs/bct/')
 	if matlab_library == 'dcc':
 		eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
+	return eng
 
 class brain_graph:
 	def __init__(self, VC):
