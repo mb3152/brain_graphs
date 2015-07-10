@@ -1,7 +1,7 @@
 #!/home/despoB/mb3152/anaconda/bin/python
 import os
 import sys
-import matlab.engine
+# import matlab.engine
 import pickle
 import glob
 import numpy as np
@@ -12,13 +12,6 @@ from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
 from itertools import combinations
 import pandas as pd
-
-def load_matlab_bct(matlab_library):
-	eng = matlab.engine.start_matlab()
-	if matlab_library == 'bct':
-		eng.addpath('/home/despoB/mb3152/brain_graphs/bct/')
-	if matlab_library == 'dcc':
-		eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
 
 class brain_graph:
 	def __init__(self, VC):
@@ -108,6 +101,7 @@ def time_series_to_ewmf_matrix(subject_time_series,parcel_path,window_size,out_f
 def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
 	from scipy.stats.mstats import zscore as z_score
 	eng = matlab.engine.start_matlab()
+	eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
 	"""
 	runs DCC method from M Lindquist
 	"""
@@ -159,7 +153,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
 
-def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5,iterations=10):
+def recursive_network_partition(parcel_path,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5,iterations=10):
 	"""
 	subject_past: list of paths to subject file or files
 
