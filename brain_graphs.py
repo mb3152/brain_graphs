@@ -66,7 +66,7 @@ def load_graph(path_to_graph):
 	f = open('%s' %(path_to_graph),'r')
 	return pickle.load(f)
 
-def load_subject_time_series(subject_path):
+def load_subject_time_series(subject_path,scrub_mm=0.1):
 	"""
 	returns a 4d array of the subject_time_series files.
 	loads original file in subject_path
@@ -74,10 +74,13 @@ def load_subject_time_series(subject_path):
 	files = glob.glob(subject_path)
 	for block,img_file in enumerate(files):
 		print 'loading: ' + str(img_file)
+		dis_file = np.loadtxt(img_file.split('functional_mni')[0] + 'frame_wise_displacement/' + img_file.split('functional_mni')[1].split('/')[1] + '/FD.1D.gz')
 		if block == 0:
-			subject_time_series_data = nib.load(img_file).get_data().astype('float32') # move up
+			subject_time_series_data = nib.load(img_file).get_data().astype('float32')
+			subject_time_series_data = np.delete(subject_time_series_data,np.where(dis_file>=scrub_mm),axis=3)
 			continue 
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
+		subject_time_series_data = np.delete(subject_time_series_data,np.where(dis_file>=scrub_mm),axis=3)
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
@@ -137,7 +140,7 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 	else:
 		g = np.zeros((np.max(parcel),subject_time_series.shape[-1]))
 		for i in range(np.max(parcel)):
-			g[i,:] = np.mean(subject_time_series[parcel==i+1],axis = 0)
+			g[i,:] = np.nanmean(subject_time_series[parcel==i+1],axis = 0)
 		g = np.corrcoef(g)
 		if fisher == True:
 			g = np.arctanh(g)
@@ -159,6 +162,32 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
 	print 'density: ' + str(g.density()) 
 	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
 	return g
+
+def community_matrix(membership,min_community_size):
+	membership = np.array(membership).reshape(-1)
+	final_matrix = np.zeros((len(membership),len(membership)))
+	final_matrix[:] = np.nan
+	connected_nodes = []
+	for i in range(1,len(np.unique(membership))+1):
+		if len(membership[membership==i]) > min_community_size:
+			for c in np.array(np.where(membership==i)):
+				for n in c:
+					connected_nodes.append(int(n))
+	community_edges = []
+	between_community_edges = []
+	connected_nodes = np.array(connected_nodes)
+	for edge in combinations(connected_nodes,2):
+		if membership[edge[0]] == membership[edge[1]]:
+			community_edges.append(edge)
+		else:
+			between_community_edges.append(edge)
+	for edge in community_edges:
+		final_matrix[edge[0],edge[1]] = 1
+		final_matrix[edge[1],edge[0]] = 1
+	for edge in between_community_edges:
+		final_matrix[edge[0],edge[1]] = 0
+		final_matrix[edge[1],edge[0]] = 0
+	return final_matrix
 
 def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.5,min_cost=0.01,min_community_size=5,iterations=10):
 	"""
@@ -182,15 +211,19 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 		matrix = np.nanmean(matrix,axis=0)
 		matrix[matrix<0] = 0.0
 		np.fill_diagonal(matrix,0)
+	matrix[matrix<0] = 0.0
+	np.fill_diagonal(matrix,0)
 	final_edge_matrix = matrix.copy()
 	final_matrix = np.zeros(matrix.shape)
-	cost = max_cost
+	num_nodes = matrix.shape[0]
+	total_edges = ((num_nodes*(num_nodes-1))/2.)
+	positive_edges = len(matrix.reshape(-1)[matrix.reshape(-1)>0.0]) / 2.
+	cost = (positive_edges / total_edges) + .01
 	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
 		temp_matrix = np.zeros((matrix.shape[0],matrix.shape[0]))
 		graph = matrix_to_igraph(matrix,cost=cost)
 		partition = graph.community_infomap(edge_weights='weight')
-		# partition = graph.community_multilevel(weights='weight')
 		connected_nodes = []
 		for node in range(partition.graph.vcount()):
 			if partition.graph.strength(node,weights='weight') > 0.:
@@ -213,9 +246,35 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 			break
 		if cost <= .1:
 			cost = cost - 0.0025
+			continue
 		if cost > .1:
 			cost = cost - 0.005
+			continue
+		if cost > .4:
+			cost = cost - .1
 	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
-	# partition = graph.community_multilevel(weights='weight')
-	return brain_graph(VertexClustering(final_graph, membership=partition.membership)),final_edge_matrix
+	#fill a final conscensus matrix to return
+	final_matrix = np.zeros(matrix.shape)
+	final_matrix[:] = np.nan
+	connected_nodes = []
+	for node in range(partition.graph.vcount()):
+		if partition.graph.strength(node,weights='weight') > 0.:
+			if partition.sizes()[partition.membership[node]] > min_community_size:
+					connected_nodes.append(node)
+	community_edges = []
+	between_community_edges = []
+	for edge in combinations(connected_nodes,2):
+		if partition.membership[edge[0]] == partition.membership[edge[1]]:
+			community_edges.append(edge)
+		else:
+			between_community_edges.append(edge)
+	for edge in community_edges:
+		final_matrix[edge[0],edge[1]] = 1
+		final_matrix[edge[1],edge[0]] = 1
+	for edge in between_community_edges:
+		final_matrix[edge[0],edge[1]] = 0
+		final_matrix[edge[1],edge[0]] = 0
+	final_matrix = final_matrix*final_edge_matrix
+	np.fill_diagonal(final_matrix,0)
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership)),final_matrix

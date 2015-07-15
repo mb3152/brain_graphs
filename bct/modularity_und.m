@@ -43,7 +43,7 @@ function [Ci Q]=modularity_und(A,gamma)
 %               Thanks to Mason Porter and Jack Setford, University of Oxford
 
 if ~exist('gamma','var')
-    gamma = 1;
+    gamma = 1.3;
 end
 
 N=length(A);                            %number of vertices
