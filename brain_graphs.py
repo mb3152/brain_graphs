@@ -305,10 +305,6 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 	np.fill_diagonal(matrix,0)
 	final_edge_matrix = matrix.copy()
 	final_matrix = np.zeros(matrix.shape)
-	# num_nodes = matrix.shape[0]
-	# total_edges = ((num_nodes*(num_nodes-1))/2.)
-	# positive_edges = len(matrix.reshape(-1)[matrix.reshape(-1)>0.0]) / 2.
-	# cost = (positive_edges / total_edges) + .01
 	cost = max_cost
 	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
@@ -349,8 +345,4 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 			continue
 	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
-	#fill a final conscensus matrix to return
-	# final_matrix = community_matrix(partition.membership,min_community_size)
-	# np.fill_diagonal(final_matrix,0)
-	# brain_graph(VertexClustering(final_graph, membership=partition.membership)),
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
