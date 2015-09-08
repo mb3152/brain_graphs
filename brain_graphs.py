@@ -222,6 +222,17 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 			np.save(out_file,g)
 	return g
 
+def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
+	final_edge_matrix = matrix.copy()
+	final_matrix = []
+	for costs in costs:
+		graph = matrix_to_igraph(matrix.copy(),cost)
+		partition = graph.community_infomap(edge_weights='weight')
+		final_matrix.append(community_matrix(partition.membership,min_community_size))
+	graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	partition = graph.community_infomap(edge_weights='weight')
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
+
 def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,return_true_cost=False):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
@@ -299,7 +310,7 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 	# positive_edges = len(matrix.reshape(-1)[matrix.reshape(-1)>0.0]) / 2.
 	# cost = (positive_edges / total_edges) + .01
 	cost = max_cost
-	# final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
+	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
 		temp_matrix = np.zeros((matrix.shape[0],matrix.shape[0]))
 		graph = matrix_to_igraph(matrix,cost=cost)
@@ -342,4 +353,4 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 	# final_matrix = community_matrix(partition.membership,min_community_size)
 	# np.fill_diagonal(final_matrix,0)
 	# brain_graph(VertexClustering(final_graph, membership=partition.membership)),
-	return brain_graph(VertexClustering(graph, membership=partition.membership))
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
