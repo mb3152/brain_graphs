@@ -229,7 +229,7 @@ def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
 		graph = matrix_to_igraph(matrix.copy(),cost)
 		partition = graph.community_infomap(edge_weights='weight')
 		final_matrix.append(community_matrix(partition.membership,min_community_size))
-	graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	fina_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
 
