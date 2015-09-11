@@ -234,11 +234,11 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
 	final_edge_matrix = matrix.copy()
 	final_matrix = []
-	for costs in costs:
+	for cost in costs:
 		graph = matrix_to_igraph(matrix.copy(),cost)
 		partition = graph.community_infomap(edge_weights='weight')
 		final_matrix.append(community_matrix(partition.membership,min_community_size))
-	graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
 
