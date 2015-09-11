@@ -288,7 +288,7 @@ def community_matrix(membership,min_community_size):
 		final_matrix[edge[1],edge[0]] = 0
 	return final_matrix
 
-def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,iterations=10):
+def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
 	"""
 	subject_past: list of paths to subject file or files
 
@@ -322,7 +322,7 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 		partition = graph.community_infomap(edge_weights='weight')
 		connected_nodes = []
 		for node in range(partition.graph.vcount()):
-			if partition.graph.strength(node,weights='weight') > 0.:
+			if partition.graph.strength(node,weights='weight') > min_weight:
 				if partition.sizes()[partition.membership[node]] > min_community_size:
  					connected_nodes.append(node)
 		community_edges = []
