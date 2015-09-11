@@ -60,7 +60,6 @@ class brain_graph:
 				wmd_array[node] = (comm_node_degree-comm_mean) / comm_std
 		bcc_array = np.zeros(VC.graph.vcount())
 		for node1 in range(VC.graph.vcount()):
-		# It is equal to the number of shortest paths from all vertices to all others that pass through that node
 			for node2 in range(VC.graph.vcount()):
 				if VC.membership[node1] == VC.membership[node2]:
 					continue
@@ -71,6 +70,16 @@ class brain_graph:
 		self.wmd = wmd_array
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
+
+def make_image(atlas_path,image_path,values):
+	image = nib.load(atlas_path)
+	image_data = image.get_data()
+	value_data = image_data.copy()
+	for ix,i in enumerate(values):
+		value_data[image_data==ix+1] = i
+	image_data[:,:,:,] = value_data[:,:,:,]
+	nib.save(image,image_path)
+
 
 def clean_up_membership(partition,matrix,min_community_size):
 	for min_community_size in range(2,min_community_size+1):

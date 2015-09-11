@@ -58,9 +58,28 @@ class brain_graph:
 					wmd_array[node] = (comm_node_degree-comm_mean)
 					continue
 				wmd_array[node] = (comm_node_degree-comm_mean) / comm_std
+		bcc_array = np.zeros(VC.graph.vcount())
+		for node1 in range(VC.graph.vcount()):
+			for node2 in range(VC.graph.vcount()):
+				if VC.membership[node1] == VC.membership[node2]:
+					continue
+				paths = VC.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
+				for p in paths:
+					bcc_array[p] = bcc_array[p] + 1
+		self.bcc = bcc_array
 		self.wmd = wmd_array
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
+
+def make_image(atlas_path,image_path,values):
+	image = nib.load(atlas_path)
+	image_data = image.get_data()
+	value_data = image_data.copy()
+	for ix,i in enumerate(values):
+		value_data[image_data==ix+1] = i
+	image_data[:,:,:,] = value_data[:,:,:,]
+	nib.save(image,image_path)
+
 
 def clean_up_membership(partition,matrix,min_community_size):
 	for min_community_size in range(2,min_community_size+1):
@@ -212,6 +231,17 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 			np.save(out_file,g)
 	return g
 
+def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
+	final_edge_matrix = matrix.copy()
+	final_matrix = []
+	for costs in costs:
+		graph = matrix_to_igraph(matrix.copy(),cost)
+		partition = graph.community_infomap(edge_weights='weight')
+		final_matrix.append(community_matrix(partition.membership,min_community_size))
+	graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	partition = graph.community_infomap(edge_weights='weight')
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
+
 def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,return_true_cost=False):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
@@ -258,7 +288,7 @@ def community_matrix(membership,min_community_size):
 		final_matrix[edge[1],edge[0]] = 0
 	return final_matrix
 
-def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,min_cost=0.05,min_community_size=5,iterations=10):
+def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,iterations=10):
 	"""
 	subject_past: list of paths to subject file or files
 
@@ -284,12 +314,8 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 	np.fill_diagonal(matrix,0)
 	final_edge_matrix = matrix.copy()
 	final_matrix = np.zeros(matrix.shape)
-	# num_nodes = matrix.shape[0]
-	# total_edges = ((num_nodes*(num_nodes-1))/2.)
-	# positive_edges = len(matrix.reshape(-1)[matrix.reshape(-1)>0.0]) / 2.
-	# cost = (positive_edges / total_edges) + .01
-	cost = 0.1
-	# final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
+	cost = max_cost
+	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
 	while True:
 		temp_matrix = np.zeros((matrix.shape[0],matrix.shape[0]))
 		graph = matrix_to_igraph(matrix,cost=cost)
@@ -326,10 +352,6 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 		if cost > .15:
 			cost = cost - 0.01
 			continue
-	# graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
-	# partition = graph.community_infomap(edge_weights='weight')
-	#fill a final conscensus matrix to return
-	# final_matrix = community_matrix(partition.membership,min_community_size)
-	np.fill_diagonal(final_matrix,0)
-	# brain_graph(VertexClustering(final_graph, membership=partition.membership)),
-	return final_matrix
+	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
+	partition = graph.community_infomap(edge_weights='weight')
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
