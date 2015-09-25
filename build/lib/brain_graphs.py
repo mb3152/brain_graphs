@@ -1,7 +1,7 @@
 #!/home/despoB/mb3152/anaconda/bin/python
 import os
 import sys
-# import matlab.engine
+import matlab.engine
 import pickle
 import glob
 import numpy as np
@@ -122,7 +122,7 @@ def load_graph(path_to_graph):
 	f = open('%s' %(path_to_graph),'r')
 	return pickle.load(f)
 
-def load_subject_time_series(subject_path,scrub_mm=False):
+def load_subject_time_series(subject_path,scrub_mm=np.inf):
 	"""
 	returns a 4d array of the subject_time_series files.
 	loads original file in subject_path
@@ -234,15 +234,25 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
 	final_edge_matrix = matrix.copy()
 	final_matrix = []
-	for costs in costs:
+	for cost in costs:
 		graph = matrix_to_igraph(matrix.copy(),cost)
 		partition = graph.community_infomap(edge_weights='weight')
 		final_matrix.append(community_matrix(partition.membership,min_community_size))
-	graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
 
-def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,return_true_cost=False):
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
+	matrix = threshold(matrix,binary,check_tri,return_true_cost=False)
+	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
+	print 'Density: ' + str(g.density()) 
+	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
+	if return_true_cost == True:
+		return g, g.density()
+	else:
+		return g
+
+def threshold(matrix,cost,binary=False,check_tri=True,return_true_cost=False):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
 	np.fill_diagonal(matrix,0.0)
@@ -254,13 +264,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,return_true_cost=Fa
 		matrix[matrix<np.percentile(matrix,c_cost_int,interpolation='nearest')] = 0
 	if binary == True:
 		matrix[matrix>0] = 1
-	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	print 'Density: ' + str(g.density()) 
-	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
-	if return_true_cost == True:
-		return g, g.density()
-	else:
-		return g
+	return matrix
 
 def community_matrix(membership,min_community_size):
 	membership = np.array(membership).reshape(-1)
@@ -288,7 +292,23 @@ def community_matrix(membership,min_community_size):
 		final_matrix[edge[1],edge[0]] = 0
 	return final_matrix
 
-def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,iterations=10):
+def multi_slice_community(matrix,cost):
+	"""
+	matrix: a matrix with the first dimenstion as time points.
+
+	resturns community detection for each time point as similar matrix
+	"""
+	eng = matlab.engine.start_matlab()
+	eng.addpath('/home/despoB/mb3152/')
+	shape = matrix.shape
+	matlab_matrix = []
+	print 'Converting Matrix for MATLAB'
+	for i in range(matrix.shape[0]):
+		matlab_matrix.append(matlab.double(threshold(matrix[i,:,:],cost).tolist()))
+	c_matrix = np.array(eng.genlouvain(matlab_matrix,1000,1,1,1))
+	c_matrix = c_matrix.reshape(shape[:2])
+
+def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
 	"""
 	subject_past: list of paths to subject file or files
 
@@ -322,7 +342,7 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 		partition = graph.community_infomap(edge_weights='weight')
 		connected_nodes = []
 		for node in range(partition.graph.vcount()):
-			if partition.graph.strength(node,weights='weight') > 0.:
+			if partition.graph.strength(node,weights='weight') > min_weight:
 				if partition.sizes()[partition.membership[node]] > min_community_size:
  					connected_nodes.append(node)
 		community_edges = []
