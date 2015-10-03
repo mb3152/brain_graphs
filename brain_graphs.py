@@ -1,7 +1,7 @@
 #!/home/despoB/mb3152/anaconda/bin/python
+import matlab.engine
 import os
 import sys
-import matlab.engine
 import pickle
 import glob
 import numpy as np
@@ -58,18 +58,28 @@ class brain_graph:
 					wmd_array[node] = (comm_node_degree-comm_mean)
 					continue
 				wmd_array[node] = (comm_node_degree-comm_mean) / comm_std
-		bcc_array = np.zeros(VC.graph.vcount())
-		for node1 in range(VC.graph.vcount()):
-			for node2 in range(VC.graph.vcount()):
-				if VC.membership[node1] == VC.membership[node2]:
-					continue
-				paths = VC.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
-				for p in paths:
-					bcc_array[p] = bcc_array[p] + 1
-		self.bcc = bcc_array
 		self.wmd = wmd_array
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
+		self.matrix = np.array(self.community.graph.get_adjacency(attribute='weight').data)
+
+def between_community_centrality(VC,start_end_nodes,weight=False):
+	bcc_array = np.zeros(brain_graph.community.graph.vcount())
+	for node1 in range(brain_graph.community.graph.vcount()):
+		for node2 in range(brain_graph.community.graph.vcount()):
+			if node1 not in start_end_nodes or node2 not in start_end_nodes:
+				continue
+			if brain_graph.community.membership[node1] == brain_graph.community.membership[node2]:
+				continue
+			if weight == True:
+				indices = np.ix_(np.argwhere(np.array(brain_graph.community.membership)==x).reshape(-1),np.argwhere(np.array(brain_graph.community.membership)==y).reshape(-1))
+				path_weight = 1 - np.nanmean(VC.matrix[indices])
+			else:
+				path_weight = 1.
+			paths = VC.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
+			for p in paths:
+				bcc_array[p] = bcc_array[p] + (1*path_weight)
+	return bcc
 
 def make_image(atlas_path,image_path,values):
 	image = nib.load(atlas_path)
@@ -243,16 +253,13 @@ def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
 
 def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
-	matrix = threshold(matrix,binary,check_tri,return_true_cost=False)
+	matrix = threshold(matrix,cost,binary,check_tri)
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
 	print 'Density: ' + str(g.density()) 
 	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
-	if return_true_cost == True:
-		return g, g.density()
-	else:
-		return g
+	return g
 
-def threshold(matrix,cost,binary=False,check_tri=True,return_true_cost=False):
+def threshold(matrix,cost,binary=False,check_tri=True):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
 	np.fill_diagonal(matrix,0.0)
@@ -292,14 +299,14 @@ def community_matrix(membership,min_community_size):
 		final_matrix[edge[1],edge[0]] = 0
 	return final_matrix
 
-def multi_slice_community(matrix,cost):
+def multi_slice_community(matrix,cost,out_file):
 	"""
 	matrix: a matrix with the first dimenstion as time points.
 
 	resturns community detection for each time point as similar matrix
 	"""
 	eng = matlab.engine.start_matlab()
-	eng.addpath('/home/despoB/mb3152/')
+	eng.addpath('/home/despoB/mb3152/brain_graphs')
 	shape = matrix.shape
 	matlab_matrix = []
 	print 'Converting Matrix for MATLAB'
@@ -307,6 +314,7 @@ def multi_slice_community(matrix,cost):
 		matlab_matrix.append(matlab.double(threshold(matrix[i,:,:],cost).tolist()))
 	c_matrix = np.array(eng.genlouvain(matlab_matrix,1000,1,1,1))
 	c_matrix = c_matrix.reshape(shape[:2])
+	np.save(out_file,c_matrix)
 
 def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
 	"""
