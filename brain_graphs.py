@@ -63,7 +63,7 @@ class brain_graph:
 		self.node_degree_by_community = node_degree_by_community
 		self.matrix = np.array(self.community.graph.get_adjacency(attribute='weight').data)
 
-def between_community_centrality(VC,start_end_nodes,weight=False):
+def between_community_centrality(brain_graph,start_end_nodes,weight=False):
 	bcc_array = np.zeros(brain_graph.community.graph.vcount())
 	for node1 in range(brain_graph.community.graph.vcount()):
 		for node2 in range(brain_graph.community.graph.vcount()):
@@ -73,13 +73,13 @@ def between_community_centrality(VC,start_end_nodes,weight=False):
 				continue
 			if weight == True:
 				indices = np.ix_(np.argwhere(np.array(brain_graph.community.membership)==x).reshape(-1),np.argwhere(np.array(brain_graph.community.membership)==y).reshape(-1))
-				path_weight = 1 - np.nanmean(VC.matrix[indices])
+				path_weight = 1 - np.nanmean(brain_graph.matrix[indices])
 			else:
 				path_weight = 1.
-			paths = VC.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
+			paths = brain_graph.community.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
 			for p in paths:
 				bcc_array[p] = bcc_array[p] + (1*path_weight)
-	return bcc
+	return bcc_array
 
 def make_image(atlas_path,image_path,values):
 	image = nib.load(atlas_path)
