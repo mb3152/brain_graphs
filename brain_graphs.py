@@ -21,16 +21,29 @@ def load_matlab_toolbox(matlab_library):
 		eng.addpath('/home/despoB/mb3152/brain_graphs/dcc/DCCcode/')
 	return eng
 
+def load_graph(path_to_graph):
+    f = open('%s' %(path_to_graph),'r')
+    return pickle.load(f)
+
+def save_graph(path_to_graph):
+    f = open('%s' %(path_to_graph),'r')
+    return pickle.load(f)
+
 class brain_graph:
 	def __init__(self, VC):
-		node_degree_by_community = np.zeros((VC.graph.vcount(),len(VC.sizes())))
+		assert (np.unique(VC.membership) == range(len(VC.sizes()))).all()
+		node_degree_by_community = np.zeros((VC.graph.vcount(),len(VC.sizes())),dtype=np.float64)
 		for node1 in range(VC.graph.vcount()):
 			for comm_idx in (np.unique(VC.membership)):
 				comm_total_degree = 0.
 				for node2 in np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1):
-					comm_total_degree = comm_total_degree + max(VC.graph[node1,node2],VC.graph[node2,node1])
+					eid = VC.graph.get_eid(node1,node2,error=False)
+					if eid == - 1:
+						continue
+					weight = VC.graph.es[eid]["weight"]
+					comm_total_degree = comm_total_degree + weight
 				node_degree_by_community[node1,comm_idx] = comm_total_degree
-		node_degree_by_community[np.argwhere(np.max(node_degree_by_community,axis=1)==0),:] = np.nan
+		# node_degree_by_community[np.argwhere(np.max(node_degree_by_community,axis=1)==0),:] = np.nan
 		pc_array = np.zeros(VC.graph.vcount())
 		for node in range(VC.graph.vcount()):
 		    node_degree = VC.graph.strength(node,weights='weight')
@@ -44,10 +57,10 @@ class brain_graph:
 		    pc_array[int(node)] = float(pc)
 		self.pc = pc_array
 		wmd_array = np.zeros(VC.graph.vcount())
-		for comm_idx in (np.unique(VC.membership)):
+		for comm_idx in range(len(VC.sizes())):
 			comm = np.argwhere(np.array(VC.membership)==comm_idx).reshape(-1)
-			comm_std = np.nanstd(node_degree_by_community[comm,comm_idx])
-			comm_mean = np.nanmean(node_degree_by_community[comm,comm_idx])
+			comm_std = np.std(node_degree_by_community[comm,comm_idx],dtype=np.float64)
+			comm_mean = np.mean(node_degree_by_community[comm,comm_idx],dtype=np.float64)
 			for node in comm:
 				node_degree = VC.graph.strength(node,weights='weight')
 				comm_node_degree = node_degree_by_community[node,comm_idx]
@@ -55,9 +68,10 @@ class brain_graph:
 					wmd_array[node] = np.nan
 					continue
 				if comm_std == 0.0:
-					wmd_array[node] = (comm_node_degree-comm_mean)
+					assert comm_node_degree == comm_mean
+					wmd_array[node] = 0.0
 					continue
-				wmd_array[node] = (comm_node_degree-comm_mean) / comm_std
+				wmd_array[node] = np.divide((np.subtract(comm_node_degree,comm_mean)),comm_std)
 		self.wmd = wmd_array
 		self.community = VC
 		self.node_degree_by_community = node_degree_by_community
@@ -81,15 +95,60 @@ def between_community_centrality(brain_graph,start_end_nodes,weight=False):
 				bcc_array[p] = bcc_array[p] + (1*path_weight)
 	return bcc_array
 
-def make_image(atlas_path,image_path,values):
+def coupling(data,window):
+    """
+    creates a functional coupling metric from 'data'
+    using the multiplication of temporal derivatives. 
+    data: should be organized in 'time x nodes' matrix
+    smooth: smoothing parameter for dynamic coupling score
+    taken from: https://github.com/macshine/coupling/blob/master/coupling.py
+    """
+    
+    #define variables
+    [tr,nodes] = data.shape
+    der = tr-1
+    td = np.zeros((der,nodes))
+    td_std = np.zeros((der,nodes))
+    data_std = np.zeros(nodes)
+    mtd = np.zeros((der,nodes,nodes))
+    sma = np.zeros((der,nodes*nodes))
+    
+    #calculate temporal derivative
+    for i in range(0,nodes):
+        for t in range(0,der):
+            td[t,i] = data[t+1,i] - data[t,i]
+    
+    
+    #standardize data
+    for i in range(0,nodes):
+        data_std[i] = np.std(td[:,i])
+    
+    td_std = td / data_std
+   
+   
+    #functional coupling score
+    for t in range(0,der):
+        for i in range(0,nodes):
+            for j in range(0,nodes):
+                mtd[t,i,j] = td_std[t,i] * td_std[t,j]
+
+
+    #temporal smoothing
+    temp = np.reshape(mtd,[der,nodes*nodes])
+    sma = pd.rolling_mean(temp,window)
+    sma = np.reshape(sma,[der,nodes,nodes])
+    
+    return (mtd, sma)
+
+def make_image(atlas_path,image_path,values,fill=False):
 	image = nib.load(atlas_path)
 	image_data = image.get_data()
+	shape = image_data.shape
 	value_data = image_data.copy()
 	for ix,i in enumerate(values):
 		value_data[image_data==ix+1] = i
 	image_data[:,:,:,] = value_data[:,:,:,]
 	nib.save(image,image_path)
-
 
 def clean_up_membership(partition,matrix,min_community_size):
 	for min_community_size in range(2,min_community_size+1):
@@ -129,10 +188,15 @@ def clean_up_membership(partition,matrix,min_community_size):
 	return membership
 
 def load_graph(path_to_graph):
-	f = open('%s' %(path_to_graph),'r')
+	f = open(path_to_graph,'r')
 	return pickle.load(f)
 
-def load_subject_time_series(subject_path,scrub_mm=np.inf):
+def save_graph(path_to_graph,partition):
+    f = open(path_to_graph,'w+')
+    pickle.dump(partition,f)
+    f.close()
+
+def load_subject_time_series(subject_path,scrub_mm=False):
 	"""
 	returns a 4d array of the subject_time_series files.
 	loads original file in subject_path
@@ -140,26 +204,29 @@ def load_subject_time_series(subject_path,scrub_mm=np.inf):
 	files = glob.glob(subject_path)
 	for block,img_file in enumerate(files):
 		print 'loading: ' + str(img_file)
-		dis_file = np.loadtxt(img_file.split('functional_mni')[0] + 'frame_wise_displacement/' + img_file.split('functional_mni')[1].split('/')[1] + '/FD.1D')
-		remove_array = np.zeros(len(dis_file))
-		for i,f in enumerate(dis_file):
-			if f > scrub_mm:
-				remove_array[i] = True
-				if i == 0:
-					remove_array[i+1] = True
-					continue
-				if i == len(dis_file)-1:
+		if scrub_mm != False:
+			dis_file = np.loadtxt(img_file.split('functional_mni')[0] + 'frame_wise_displacement/' + img_file.split('functional_mni')[1].split('/')[1] + '/FD.1D')
+			remove_array = np.zeros(len(dis_file))
+			for i,f in enumerate(dis_file):
+				if f > scrub_mm:
+					remove_array[i] = True
+					if i == 0:
+						remove_array[i+1] = True
+						continue
+					if i == len(dis_file)-1:
+						remove_array[i-1] = True
+						continue
 					remove_array[i-1] = True
-					continue
-				remove_array[i-1] = True
-				remove_array[i+1] = True
-		remove_array[remove_array==0.0] = False
+					remove_array[i+1] = True
+			remove_array[remove_array==0.0] = False
 		if block == 0:
 			subject_time_series_data = nib.load(img_file).get_data().astype('float32')
-			subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
+			if scrub_mm != False:
+				subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
 			continue
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
-		new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(remove_array==True),axis=3)
+		if scrub_mm != False:
+			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(remove_array==True),axis=3)
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
@@ -190,7 +257,7 @@ def times_series_to_interp_matrix(subject_time_series,parcel_path,interpolation_
 		ts[i] = final_nodes_ts
 	ts = pd.DataFrame(ts)
 
-def time_series_to_ewmf_matrix(subject_time_series,parcel_path,window_size,out_file):
+def time_series_to_ewmf_matrix(subject_time_series,parcel_path,window_size,out_file=None):
 	"""
 	runs exponentially weighted moment functions via Pandas
 	"""
@@ -200,7 +267,10 @@ def time_series_to_ewmf_matrix(subject_time_series,parcel_path,window_size,out_f
 		ts[i] = np.mean(subject_time_series[parcel==i+1],axis = 0)
 	ts = pd.DataFrame(ts)
 	matrix = pd.ewmcorr(ts,span=window_size)
-	np.save(out_file,np.array(matrix))
+	if out_file != None:
+		np.save(out_file,np.array(matrix))
+	else:
+		return np.array(matrix)
 
 def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
 	from scipy.stats.mstats import zscore as z_score
@@ -241,25 +311,58 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 			np.save(out_file,g)
 	return g
 
-def partition_avg_costs(matrix,costs,min_community_size,graph_cost):
+def partition_avg_costs(matrix,costs,min_community_size):
 	final_edge_matrix = matrix.copy()
 	final_matrix = []
 	for cost in costs:
 		graph = matrix_to_igraph(matrix.copy(),cost)
 		partition = graph.community_infomap(edge_weights='weight')
 		final_matrix.append(community_matrix(partition.membership,min_community_size))
-	final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0)*final_edge_matrix,cost=1.)
+	final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0),cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
-	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
+	return partition.membership
 
-def matrix_to_igraph(matrix,cost,binary=False,check_tri=True):
-	matrix = threshold(matrix,cost,binary,check_tri)
+def partition_exponentially_weight(matrix,num_communities,min_community_size,avg=False):
+	community_len = 0
+	exp = 1
+	community_lenths = []
+	exponents = []
+	while community_len < num_communities:
+		exp = exp + .1
+		temp_matrix = matrix.copy()
+		temp_matrix = temp_matrix**exp
+		graph = matrix_to_igraph(temp_matrix,cost=1.)
+		partition = graph.community_infomap(edge_weights='weight')
+		membership = np.array(partition.sizes())
+		community_len = len(membership[membership>min_community_size])
+		community_lenths.append(community_len)
+		exponents.append(exp)
+		print 'Exponent: ' + str(exp) + ', Communities: ' + str(community_len)
+		if np.max(community_lenths) > np.max(community_lenths[-10:]):
+			exp = exponents[np.argmax(community_lenths)]
+			print 'breaking early with exponent of: ' + str(exp)
+			break
+	if avg == True:
+		exponents = np.linspace(exp-.1,exp+.1,num=1000)
+		final_matrix = []
+		for avg_exp in exponents:
+			temp_matrix = matrix.copy()
+			temp_matrix = temp_matrix**avg_exp
+			graph = matrix_to_igraph(temp_matrix,cost=1.)
+			partition = graph.community_infomap(edge_weights='weight')
+			final_matrix.append(community_matrix(partition.membership,min_community_size))
+		final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0),cost=1.)
+		partition = graph.community_infomap(edge_weights='weight')
+	return np.array(partition.membership),exp
+
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False):
+	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize)
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	print 'Density: ' + str(g.density()) 
-	# npt.assert_almost_equal(g.density(), cost, decimal=2, err_msg='Error while thresholding matrix', verbose=True)
+	if np.diff([cost,g.density()]) > .005:
+		print 'Density not %s! Did you want: ' %(cost)+ str(g.density()) + ' ?' 
 	return g
 
-def threshold(matrix,cost,binary=False,check_tri=True):
+def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
 	np.fill_diagonal(matrix,0.0)
@@ -268,9 +371,11 @@ def threshold(matrix,cost,binary=False,check_tri=True):
 		if np.sum(np.triu(matrix)) == 0.0 or np.sum(np.tril(matrix)) == 0.0:
 			c_cost_int = 100.-((cost/2.)*100.)
 	if c_cost_int > 0:
-		matrix[matrix<np.percentile(matrix,c_cost_int,interpolation='nearest')] = 0
+		matrix[matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)] = 0.
 	if binary == True:
 		matrix[matrix>0] = 1
+	if normalize == True:
+		matrix = matrix/np.sum(matrix)
 	return matrix
 
 def community_matrix(membership,min_community_size):
@@ -299,7 +404,7 @@ def community_matrix(membership,min_community_size):
 		final_matrix[edge[1],edge[0]] = 0
 	return final_matrix
 
-def multi_slice_community(matrix,cost,out_file):
+def multi_slice_community(matrix,cost,out_file,omega=.1,gamma=1.0):
 	"""
 	matrix: a matrix with the first dimenstion as time points.
 
@@ -312,11 +417,12 @@ def multi_slice_community(matrix,cost,out_file):
 	print 'Converting Matrix for MATLAB'
 	for i in range(matrix.shape[0]):
 		matlab_matrix.append(matlab.double(threshold(matrix[i,:,:],cost).tolist()))
-	c_matrix = np.array(eng.genlouvain(matlab_matrix,1000,1,1,1))
+	c_matrix = np.array(eng.genlouvain(matlab_matrix,1000,1,1,1,omega,gamma))
 	c_matrix = c_matrix.reshape(shape[:2])
 	np.save(out_file,c_matrix)
 
-def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
+
+def average_recursive_network_partition(parcel_path=None,subject_path=None,matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
 	"""
 	subject_past: list of paths to subject file or files
 
@@ -331,10 +437,57 @@ def recursive_network_partition(parcel_path=None,subject_paths=[],matrix=None,gr
 	"""
 	
 	if matrix == None:
-		matrix = []
-		for subject_path in subject_paths:
-			subject_time_series_data = load_subject_time_series(subject_path)
-			matrix.append(time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path))
+		subject_time_series_data = load_subject_time_series(subject_path)
+		matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)
+		matrix = np.nanmean(matrix,axis=0)
+		matrix[matrix<0] = 0.0
+		np.fill_diagonal(matrix,0)
+	matrix[matrix<0] = 0.0
+	np.fill_diagonal(matrix,0)
+	final_edge_matrix = matrix.copy()
+	final_matrix = []
+	cost = max_cost
+	final_graph = matrix_to_igraph(matrix.copy(),cost=graph_cost)
+	while True:
+		temp_matrix = np.zeros((matrix.shape[0],matrix.shape[0]))
+		graph = matrix_to_igraph(matrix,cost=cost)
+		partition = graph.community_infomap(edge_weights='weight')
+		community_matrix(partition.community.membership,min_community_size)
+		if cost < min_cost:
+			break
+		if cost <= .05:
+			cost = cost - 0.001
+			continue
+		if cost <= .15:
+			cost = cost - 0.01
+			continue
+		if cost >= .3:
+			cost = cost - .05
+			continue
+		if cost > .15:
+			cost = cost - 0.01
+			continue
+	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
+	partition = graph.community_infomap(edge_weights='weight')
+	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
+
+def recursive_network_partition(parcel_path=None,subject_path=None,matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
+	"""
+	subject_past: list of paths to subject file or files
+
+	Combines network partitions across costs (Power et al, 2011)
+	Starts at max_cost, finds partitions that nodes are in,
+	slowly decreases density to find smaller partitions, but keeps 
+	information (from higher densities) about nodes that become disconnected.
+
+	Runs nodal roles on one cost (graph_cost), but with final partition.
+
+	Returns brain_graph object.
+	"""
+	
+	if matrix == None:
+		subject_time_series_data = load_subject_time_series(subject_path)
+		matrix = time_series_to_matrix(subject_time_series=subject_time_series_data,voxel=False,parcel_path=parcel_path)
 		matrix = np.nanmean(matrix,axis=0)
 		matrix[matrix<0] = 0.0
 		np.fill_diagonal(matrix,0)
