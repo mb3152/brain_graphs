@@ -223,10 +223,14 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 					remove_array[i-1] = True
 					remove_array[i+1] = True
 			remove_array[remove_array==0.0] = False
-		if block == 0:
+		if block == 0: # first file only - make sure to redo any exlusion logic here
 			subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 			if scrub_mm != False:
 				subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
+			if incl_timepoints is not None: # include only the supplied timepoints
+				i_tps = np.zeros(len(subject_time_series_data))
+				i_tps[incl_timepoints] = 1
+				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==False),axis=3)
 			continue
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 		if scrub_mm != False:
