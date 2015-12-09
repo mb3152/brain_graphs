@@ -230,7 +230,7 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 			if incl_timepoints is not None: # include only the supplied timepoints
 				i_tps = np.zeros(len(subject_time_series_data))
 				i_tps[incl_timepoints] = 1
-				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==False),axis=3)
+				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==0),axis=3)
 			continue
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 		if scrub_mm != False:
@@ -238,7 +238,7 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 		if incl_timepoints is not None: # include only the supplied timepoints
 			i_tps = np.zeros(len(new_subject_time_series_data))
 			i_tps[incl_timepoints] = 1
-			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(i_tps==False),axis=3)
+			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(i_tps==0),axis=3)
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
