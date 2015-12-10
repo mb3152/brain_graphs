@@ -1,6 +1,5 @@
 import os, sys, math
 import numpy as np
-import nibabel as nib
 
 # can be called for any task
 def get_taskstr(task):
