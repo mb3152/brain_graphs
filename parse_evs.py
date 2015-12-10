@@ -34,11 +34,6 @@ def get_cond_timepoints(sub, task, conds):
 	ev_dir = get_evdir(sub, task)
 	evfile_list = set(os.listdir(ev_dir))
 	
-	epi_fn = get_epifile(sub, task)
-	# load the file, get the TR
-	epi = nib.load(epi_fn)
-	print(epi_fn, epi, epi.shape)
-
 	TR = 0.72 # seconds; figure out where to embed or obtain this knowledge. should be correct for HCP.
 
 	cond_timepoints = dict()
