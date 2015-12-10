@@ -6,33 +6,35 @@ import nibabel as nib
 def get_taskstr(task):
 	return 'tfMRI_{task}_RL'.format(task=task)
 
-def get_evdir(sub_dir, task):
+def get_evdir(sub, task):
 	'''Return the directory which contains the FSL 3-col onset ('EV') files for a specified subject and task. Implementation logic goes here.'''
 	task_str = get_taskstr(task)
-	return os.path.join(sub_dir, task_str, 'EVs')
+	metadata_dir = '/home/despoB/connectome-raw/%s/MNINonLinear/Results'%sub
+	return os.path.join(metadata_dir, task_str, 'EVs')
 
-def get_epidir(sub_dir, task):
+def get_epidir(sub, task):
 	'''Return the directory which contains the epi files for a specified subject and task. Implementation logic goes here.'''
 	task_str = get_taskstr(task)
-	return os.path.join(sub_dir, task_str)
+	data_dir = '/home/despoB/connectome-data/%s'%sub
+	return os.path.join(data_dir, task_str)
 
-def get_epifile(sub_dir, task):
+def get_epifile(sub, task):
 	'''Return the directory which contains the epi files for a specified subject and task. Implementation logic goes here.'''
 	task_str = get_taskstr(task)
-	epi_dir = get_epidir(sub_dir, task)
+	epi_dir = get_epidir(sub, task)
 	return os.path.join(epi_dir, '%s.nii.gz'%task_str)
 
-def get_cond_timeseries(sub_dir, task, conds):
+def get_cond_timeseries(sub, task, conds):
 	'''Reads the onset/EV files for the specified subject and task, and splits them according to a dict of conditions.
 
-	sub_dir	:Prent directory
+	sub	:Subject number, as a string
 	task	:Task names
 	conds	:dict like {'condname':['file1.txt','file2.txt'], 'cond2':['file3.txt']}
 	'''
-	ev_dir = get_evdir(sub_dir, task)
+	ev_dir = get_evdir(sub, task)
 	evfile_list = set(os.listdir(ev_dir))
 	
-	epi_fn = get_epifile(sub_dir, task)
+	epi_fn = get_epifile(sub, task)
 	# load the file, get the TR
 	epi = nib.load(epi_fn)
 	print(epi_fn, epi, epi.shape)
@@ -80,15 +82,14 @@ tasks = ['EMOTION', 'GAMBLING', 'LANGUAGE', 'MOTOR', 'RELATIONAL', 'SOCIAL', 'WM
 
 for task in tasks:
 	# per-subj setup
-	subj = '987983'
-	sub_dir = '/Users/smerdis/scratch'
+	sub = '987983'
 
 	# per-task setup; kinda unpythonic, but allows explicit setup of conditions
 	conds = dict()
 	if task == 'EMOTION':
 		conds['fear'] = ['fear.txt'] # names of EV files that should be grouped into this condition
 		conds['neut'] = ['neut.txt']
-		cond_ts = get_cond_timeseries(sub_dir, task, conds)
+		cond_ts = get_cond_timeseries(sub, task, conds)
 		print cond_ts
 
 
