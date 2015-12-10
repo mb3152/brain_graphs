@@ -196,10 +196,14 @@ def save_graph(path_to_graph,partition):
     pickle.dump(partition,f)
     f.close()
 
-def load_subject_time_series(subject_path,scrub_mm=False):
+def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 	"""
 	returns a 4d array of the subject_time_series files.
 	loads original file in subject_path
+
+	incl_timepoints:	the timepoints to include, if we only want to examine a subset.
+						A default value of None means all the timepoints are returned.
+						If for some reason the empty set of timepoints is needed, [] should be used.
 	"""
 	files = glob.glob(subject_path)
 	for block,img_file in enumerate(files):
@@ -219,14 +223,22 @@ def load_subject_time_series(subject_path,scrub_mm=False):
 					remove_array[i-1] = True
 					remove_array[i+1] = True
 			remove_array[remove_array==0.0] = False
-		if block == 0:
+		if block == 0: # first file only - make sure to redo any exlusion logic here
 			subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 			if scrub_mm != False:
 				subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
+			if incl_timepoints is not None: # include only the supplied timepoints
+				i_tps = np.zeros(len(subject_time_series_data))
+				i_tps[incl_timepoints] = 1
+				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==0),axis=3)
 			continue
 		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
 		if scrub_mm != False:
 			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(remove_array==True),axis=3)
+		if incl_timepoints is not None: # include only the supplied timepoints
+			i_tps = np.zeros(len(new_subject_time_series_data))
+			i_tps[incl_timepoints] = 1
+			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(i_tps==0),axis=3)
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
