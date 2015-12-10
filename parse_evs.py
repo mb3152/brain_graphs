@@ -24,18 +24,17 @@ def get_epifile(sub, task):
 	epi_dir = get_epidir(sub, task)
 	return os.path.join(epi_dir, '%s.nii.gz'%task_str)
 
-def get_cond_timepoints(sub, task, conds):
+def get_cond_timepoints(sub, task, conds, TR):
 	'''Reads the onset/EV files for the specified subject and task, and splits them according to a dict of conditions.
 
-	sub	:Subject number, as a string
-	task	:Task names
-	conds	:dict like {'condname':['file1.txt','file2.txt'], 'cond2':['file3.txt']}
+	sub	: Subject number, as a string
+	task	: Task names
+	conds	: dict like {'condname':['file1.txt','file2.txt'], 'cond2':['file3.txt']}
+	TR	: in seconds, necessary for converting onset files (which are in seconds) to indices of the timeseries (timepoints)
 	'''
 	ev_dir = get_evdir(sub, task)
 	evfile_list = set(os.listdir(ev_dir))
 	
-	TR = 0.72 # seconds; figure out where to embed or obtain this knowledge. should be correct for HCP.
-
 	cond_timepoints = dict()
 
 	# check that all the filenames given in conds exist in the dir
@@ -77,6 +76,8 @@ def get_cond_timepoints(sub, task, conds):
 
 
 tasks = ['EMOTION', 'GAMBLING', 'LANGUAGE', 'MOTOR', 'RELATIONAL', 'SOCIAL', 'WM']
+TR = 0.72 # seconds; figure out where to embed or obtain this knowledge. should be correct for HCP.
+
 
 for task in tasks:
 	# per-subj setup
@@ -94,6 +95,6 @@ for task in tasks:
 	else:
 		continue # do not call get_cond_timepoints unless conditions are specified
 	
-	cond_tps = get_cond_timepoints(sub, task, conds)
+	cond_tps = get_cond_timepoints(sub, task, conds, TR)
 	for cond, tps in cond_tps.items():
 		print '{c}: {s}'.format(c=cond,s=tps)
