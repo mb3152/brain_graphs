@@ -6,7 +6,9 @@ import pickle
 import glob
 import numpy as np
 import numpy.testing as npt
+import scipy
 from scipy.stats.stats import pearsonr
+from scipy.sparse.csgraph import minimum_spanning_tree
 from sklearn.feature_extraction import image
 from igraph import Graph, ADJ_UNDIRECTED, VertexClustering
 import nibabel as nib
@@ -224,7 +226,7 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 					remove_array[i+1] = True
 			remove_array[remove_array==0.0] = False
 		if block == 0: # first file only - make sure to redo any exlusion logic here
-			subject_time_series_data = nib.load(img_file).get_data().astype('float32')
+			subject_time_series_data = nib.load(img_file).get_data()
 			if scrub_mm != False:
 				subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
 			if incl_timepoints is not None: # include only the supplied timepoints
@@ -232,7 +234,7 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 				i_tps[incl_timepoints] = 1
 				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==0),axis=3)
 			continue
-		new_subject_time_series_data = nib.load(img_file).get_data().astype('float32')
+		new_subject_time_series_data = nib.load(img_file).get_data()
 		if scrub_mm != False:
 			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(remove_array==True),axis=3)
 		if incl_timepoints is not None: # include only the supplied timepoints
@@ -364,17 +366,18 @@ def partition_exponentially_weight(matrix,num_communities,min_community_size,avg
 			partition = graph.community_infomap(edge_weights='weight')
 			final_matrix.append(community_matrix(partition.membership,min_community_size))
 		final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0),cost=1.)
-		partition = graph.community_infomap(edge_weights='weight')
+		partition = graph.community_infomap(edge_weights='weight',trials=5000)
 	return np.array(partition.membership),exp
 
-def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False):
-	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize)
-	g = Graph.Weighted_Adjacency(matrix.tolist(),mode= ADJ_UNDIRECTED,attr="weight")
-	if np.diff([cost,g.density()]) > .005:
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst):
+	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize,mst)
+	g = Graph.Weighted_Adjacency(matrix.tolist(),mode=ADJ_UNDIRECTED,attr="weight")
+	print 'Matrix converted to graph with density of: ' + str(g.density())
+	if np.diff([cost,g.density()])[0] > .005:
 		print 'Density not %s! Did you want: ' %(cost)+ str(g.density()) + ' ?' 
 	return g
 
-def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False):
+def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False):
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
 	np.fill_diagonal(matrix,0.0)
@@ -383,7 +386,17 @@ def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',n
 		if np.sum(np.triu(matrix)) == 0.0 or np.sum(np.tril(matrix)) == 0.0:
 			c_cost_int = 100.-((cost/2.)*100.)
 	if c_cost_int > 0:
-		matrix[matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)] = 0.
+		if mst == False:
+			matrix[matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)] = 0.
+		else:
+			matrix = np.tril(matrix,-1)
+			mst = minimum_spanning_tree(matrix*-1)*-1
+			mst = mst.toarray()
+			mst = mst.transpose() + mst
+			matrix = matrix.transpose() + matrix
+			a = matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)
+			b = mst==0.0
+			matrix[(matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)) & (mst==0.0)] = 0.
 	if binary == True:
 		matrix[matrix>0] = 1
 	if normalize == True:
@@ -432,7 +445,6 @@ def multi_slice_community(matrix,cost,out_file,omega=.1,gamma=1.0):
 	c_matrix = np.array(eng.genlouvain(matlab_matrix,1000,1,1,1,omega,gamma))
 	c_matrix = c_matrix.reshape(shape[:2])
 	np.save(out_file,c_matrix)
-
 
 def average_recursive_network_partition(parcel_path=None,subject_path=None,matrix=None,graph_cost=.1,max_cost=.25,min_cost=0.05,min_community_size=5,min_weight=1.):
 	"""
@@ -545,6 +557,6 @@ def recursive_network_partition(parcel_path=None,subject_path=None,matrix=None,g
 		if cost > .15:
 			cost = cost - 0.01
 			continue
-	graph = matrix_to_igraph(final_matrix*final_edge_matrix,cost=1.)
+	graph = matrix_to_igraph(final_matrix,cost=1.)
 	partition = graph.community_infomap(edge_weights='weight')
 	return brain_graph(VertexClustering(final_graph, membership=partition.membership))
