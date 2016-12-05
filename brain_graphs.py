@@ -1,5 +1,4 @@
 #!/home/despoB/mb3152/anaconda/bin/python
-import matlab.engine
 import os
 import sys
 import pickle
@@ -16,6 +15,7 @@ from itertools import combinations
 import pandas as pd
 
 def load_matlab_toolbox(matlab_library):
+	import matlab.engine
 	eng = matlab.engine.start_matlab()
 	if matlab_library == 'bct':
 		eng.addpath('/home/despoB/mb3152/brain_graphs/bct/')
@@ -31,6 +31,17 @@ def save_graph(path_to_graph):
     f = open('%s' %(path_to_graph),'r')
     return pickle.load(f)
 
+def compute_FD(MP, units='degrees'):
+	if units == 'radians' or units == 'Radians':
+		factor = 1
+	elif units == 'degrees' or units == 'Degrees':
+		factor = (np.pi / 180) * 50
+	AbsMotDiff = abs(np.diff(MP, axis=0))
+	Trans = AbsMotDiff[:, 0:3]
+	Rot = AbsMotDiff[:, 3:6]
+	FD = np.sum(Trans, axis=1) + np.sum(factor * Rot, axis=1)
+	return FD
+
 class brain_graph:
 	def __init__(self, VC):
 		assert (np.unique(VC.membership) == range(len(VC.sizes()))).all()
@@ -45,7 +56,6 @@ class brain_graph:
 					weight = VC.graph.es[eid]["weight"]
 					comm_total_degree = comm_total_degree + weight
 				node_degree_by_community[node1,comm_idx] = comm_total_degree
-		# node_degree_by_community[np.argwhere(np.max(node_degree_by_community,axis=1)==0),:] = np.nan
 		pc_array = np.zeros(VC.graph.vcount())
 		for node in range(VC.graph.vcount()):
 		    node_degree = VC.graph.strength(node,weights='weight')
@@ -198,20 +208,15 @@ def save_graph(path_to_graph,partition):
     pickle.dump(partition,f)
     f.close()
 
-def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
+def load_subject_time_series(subject_path,dis_file=None,scrub_mm=False):
 	"""
 	returns a 4d array of the subject_time_series files.
 	loads original file in subject_path
-
-	incl_timepoints:	the timepoints to include, if we only want to examine a subset.
-						A default value of None means all the timepoints are returned.
-						If for some reason the empty set of timepoints is needed, [] should be used.
 	"""
 	files = glob.glob(subject_path)
 	for block,img_file in enumerate(files):
 		print 'loading: ' + str(img_file)
 		if scrub_mm != False:
-			dis_file = np.loadtxt(img_file.split('functional_mni')[0] + 'frame_wise_displacement/' + img_file.split('functional_mni')[1].split('/')[1] + '/FD.1D')
 			remove_array = np.zeros(len(dis_file))
 			for i,f in enumerate(dis_file):
 				if f > scrub_mm:
@@ -225,22 +230,14 @@ def load_subject_time_series(subject_path,scrub_mm=False,incl_timepoints=None):
 					remove_array[i-1] = True
 					remove_array[i+1] = True
 			remove_array[remove_array==0.0] = False
-		if block == 0: # first file only - make sure to redo any exlusion logic here
+		if block == 0:
 			subject_time_series_data = nib.load(img_file).get_data()
 			if scrub_mm != False:
 				subject_time_series_data = np.delete(subject_time_series_data,np.where(remove_array==True),axis=3)
-			if incl_timepoints is not None: # include only the supplied timepoints
-				i_tps = np.zeros(len(subject_time_series_data))
-				i_tps[incl_timepoints] = 1
-				subject_time_series_data = np.delete(subject_time_series_data,np.where(i_tps==0),axis=3)
 			continue
 		new_subject_time_series_data = nib.load(img_file).get_data()
 		if scrub_mm != False:
 			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(remove_array==True),axis=3)
-		if incl_timepoints is not None: # include only the supplied timepoints
-			i_tps = np.zeros(len(new_subject_time_series_data))
-			i_tps[incl_timepoints] = 1
-			new_subject_time_series_data = np.delete(new_subject_time_series_data,np.where(i_tps==0),axis=3)
 		subject_time_series_data = np.concatenate((subject_time_series_data,new_subject_time_series_data),axis =3)
 	return subject_time_series_data
 
@@ -323,6 +320,7 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 			g = np.arctanh(g)
 		if out_file != None:
 			np.save(out_file,g)
+	del subject_time_series
 	return g
 
 def partition_avg_costs(matrix,costs,min_community_size):
@@ -357,7 +355,7 @@ def partition_exponentially_weight(matrix,num_communities,min_community_size,avg
 			print 'breaking early with exponent of: ' + str(exp)
 			break
 	if avg == True:
-		exponents = np.linspace(exp-.1,exp+.1,num=1000)
+		exponents = np.linspace(exp-.1,exp+.1,num=100)
 		final_matrix = []
 		for avg_exp in exponents:
 			temp_matrix = matrix.copy()
@@ -366,10 +364,24 @@ def partition_exponentially_weight(matrix,num_communities,min_community_size,avg
 			partition = graph.community_infomap(edge_weights='weight')
 			final_matrix.append(community_matrix(partition.membership,min_community_size))
 		final_graph = matrix_to_igraph(np.nanmean(final_matrix,axis=0),cost=1.)
-		partition = graph.community_infomap(edge_weights='weight',trials=5000)
+		partition = graph.community_infomap(edge_weights='weight',trials=100)
 	return np.array(partition.membership),exp
 
-def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst):
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False):
+	"""
+	Convert a matrix to an igraph object
+	matrix: a numpy matrix
+	cost: the proportion of edges. e.g., a cost of 0.1 has 10 percent
+	of all possible edges in the graph
+	binary: False, convert weighted values to 1
+	check_tri: True, ensure that the matrix contains upper and low triangles.
+	if it does not, the cost calculation changes.
+	interpolation: midpoint, the interpolation method to pass to np.percentile
+	normalize: False, make all edges sum to 1. Convienient for comparisons across subjects,
+	as this ensures the same sum of weights and number of edges are equal across subjects
+	mst: False, calculate the maximum spanning tree, which is the strongest set of edges that
+	keep the graph connected. This is convienient for ensuring no nodes become disconnected.
+	"""
 	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize,mst)
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode=ADJ_UNDIRECTED,attr="weight")
 	print 'Matrix converted to graph with density of: ' + str(g.density())
@@ -378,6 +390,22 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midp
 	return g
 
 def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False):
+	"""
+	Threshold a numpy matrix to obtain a certain "cost".
+
+	matrix: a numpy matrix
+	cost: the proportion of edges. e.g., a cost of 0.1 has 10 percent
+	of all possible edges in the graph
+	binary: False, convert weighted values to 1
+	check_tri: True, ensure that the matrix contains upper and low triangles.
+	if it does not, the cost calculation changes.
+	interpolation: midpoint, the interpolation method to pass to np.percentile
+	normalize: False, make all edges sum to 1. Convienient for comparisons across subjects,
+	as this ensures the same sum of weights and number of edges are equal across subjects
+	mst: False, calculate the maximum spanning tree, which is the strongest set of edges that
+	keep the graph connected. This is convienient for ensuring no nodes become disconnected.
+
+	"""
 	matrix[np.isnan(matrix)] = 0.0
 	matrix[matrix<0.0] = 0.0
 	np.fill_diagonal(matrix,0.0)
@@ -394,8 +422,6 @@ def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',n
 			mst = mst.toarray()
 			mst = mst.transpose() + mst
 			matrix = matrix.transpose() + matrix
-			a = matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)
-			b = mst==0.0
 			matrix[(matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)) & (mst==0.0)] = 0.
 	if binary == True:
 		matrix[matrix>0] = 1
@@ -410,9 +436,8 @@ def community_matrix(membership,min_community_size):
 	connected_nodes = []
 	for i in np.unique(membership):
 		if len(membership[membership==i]) >= min_community_size:
-			for c in np.array(np.where(membership==i)):
-				for n in c:
-					connected_nodes.append(int(n))
+			for n in np.array(np.where(membership==i))[0]:
+				connected_nodes.append(int(n))
 	community_edges = []
 	between_community_edges = []
 	connected_nodes = np.array(connected_nodes)
