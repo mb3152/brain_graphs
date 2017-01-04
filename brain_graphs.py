@@ -58,6 +58,8 @@ class brain_graph:
 				node_degree_by_community[node1,comm_idx] = comm_total_degree
 		pc_array = np.zeros(VC.graph.vcount())
 		for node in range(VC.graph.vcount()):
+		    assert np.isclose(VC.graph.strength(node,weights='weight'),np.nansum(node_degree_by_community[node]))
+		    # node_degree = np.nansum(node_degree_by_community[node])
 		    node_degree = VC.graph.strength(node,weights='weight')
 		    if node_degree == 0.0: 
 		        pc_array[node]= np.nan
@@ -74,6 +76,7 @@ class brain_graph:
 			comm_std = np.std(node_degree_by_community[comm,comm_idx],dtype=np.float64)
 			comm_mean = np.mean(node_degree_by_community[comm,comm_idx],dtype=np.float64)
 			for node in comm:
+				# node_degree = np.nansum(node_degree_by_community[node])
 				node_degree = VC.graph.strength(node,weights='weight')
 				comm_node_degree = node_degree_by_community[node,comm_idx]
 				if node_degree == 0.0:
