@@ -228,7 +228,7 @@ def load_subject_time_series(subject_path,dis_file=None,scrub_mm=False):
 						remove_array[i+1] = True
 						continue
 					if i == len(dis_file)-1:
-						remove_array[i-1] = True
+						remove_array[i] = True
 						continue
 					remove_array[i-1] = True
 					remove_array[i+1] = True
@@ -385,6 +385,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midp
 	mst: False, calculate the maximum spanning tree, which is the strongest set of edges that
 	keep the graph connected. This is convienient for ensuring no nodes become disconnected.
 	"""
+	matrix = np.array(matrix)
 	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize,mst)
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode=ADJ_UNDIRECTED,attr="weight")
 	print 'Matrix converted to graph with density of: ' + str(g.density())
@@ -420,6 +421,7 @@ def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',n
 		if mst == False:
 			matrix[matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)] = 0.
 		else:
+			assert (np.tril(matrix,-1) == np.triu(matrix,1).transpose()).all()
 			matrix = np.tril(matrix,-1)
 			mst = minimum_spanning_tree(matrix*-1)*-1
 			mst = mst.toarray()
