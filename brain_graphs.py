@@ -228,7 +228,7 @@ def load_subject_time_series(subject_path,dis_file=None,scrub_mm=False):
 						remove_array[i+1] = True
 						continue
 					if i == len(dis_file)-1:
-						remove_array[i] = True
+						remove_array[i-1] = True
 						continue
 					remove_array[i-1] = True
 					remove_array[i+1] = True
