@@ -306,7 +306,7 @@ def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=Fal
 	If voxel == true, masks the subject_time_series with the parcel 
 	and runs voxel correlation on those voxels.
 	"""
-	parcel = nib.load(parcel_path).get_data()
+	parcel = nib.load(parcel_path).get_data().astype(int)
 	if voxel == True:
 		flat_parcel = parcel.reshape(-1)
 		g = np.memmap(out_file, dtype='float32', mode='r+', shape=(len(flat_parcel),len(flat_parcel)))
@@ -370,7 +370,7 @@ def partition_exponentially_weight(matrix,num_communities,min_community_size,avg
 		partition = graph.community_infomap(edge_weights='weight',trials=100)
 	return np.array(partition.membership),exp
 
-def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False):
+def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False,test_matrix=True):
 	"""
 	Convert a matrix to an igraph object
 	matrix: a numpy matrix
@@ -393,7 +393,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midp
 		print 'Density not %s! Did you want: ' %(cost)+ str(g.density()) + ' ?' 
 	return g
 
-def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False):
+def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',normalize=False,mst=False,test_matrix=True):
 	"""
 	Threshold a numpy matrix to obtain a certain "cost".
 
@@ -421,12 +421,14 @@ def threshold(matrix,cost,binary=False,check_tri=True,interpolation='midpoint',n
 		if mst == False:
 			matrix[matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)] = 0.
 		else:
+			if test_matrix == True: t_m = matrix.copy()
 			assert (np.tril(matrix,-1) == np.triu(matrix,1).transpose()).all()
 			matrix = np.tril(matrix,-1)
 			mst = minimum_spanning_tree(matrix*-1)*-1
 			mst = mst.toarray()
 			mst = mst.transpose() + mst
 			matrix = matrix.transpose() + matrix
+			if test_matrix == True: assert (matrix == t_m).all() == True
 			matrix[(matrix<np.percentile(matrix,c_cost_int,interpolation=interpolation)) & (mst==0.0)] = 0.
 	if binary == True:
 		matrix[matrix>0] = 1
