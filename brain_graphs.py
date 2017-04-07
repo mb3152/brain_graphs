@@ -300,29 +300,19 @@ def time_series_to_dcc_matrix(subject_time_series,parcel_path,out_file):
 	matrices = eng.mvDCC(matlab.double(ts.tolist()))
 	np.save(out_file,np.array(matrices))
 
-def time_series_to_matrix(subject_time_series,parcel_path,voxel=False,fisher=False,out_file=None):
+def time_series_to_matrix(subject_time_series,parcel_path,fisher=False,out_file=None):
 	"""
 	Makes correlation matrix from parcel
-	If voxel == true, masks the subject_time_series with the parcel 
-	and runs voxel correlation on those voxels.
 	"""
 	parcel = nib.load(parcel_path).get_data().astype(int)
-	if voxel == True:
-		flat_parcel = parcel.reshape(-1)
-		g = np.memmap(out_file, dtype='float32', mode='r+', shape=(len(flat_parcel),len(flat_parcel)))
-		subject_time_series = subject_time_series.reshape(-1,subject_time_series.shape[-1])
-		subject_time_series = subject_time_series[np.argwhere(flat_parcel>0)]
-		subject_time_series = subject_time_series.reshape((subject_time_series.shape[0],subject_time_series.shape[-1]))
-		g = np.corrcoef(subject_time_series)
-	else:
-		g = np.zeros((np.max(parcel),subject_time_series.shape[-1]))
-		for i in range(np.max(parcel)):
-			g[i,:] = np.nanmean(subject_time_series[parcel==i+1],axis = 0)
-		g = np.corrcoef(g)
-		if fisher == True:
-			g = np.arctanh(g)
-		if out_file != None:
-			np.save(out_file,g)
+	g = np.zeros((np.max(parcel),subject_time_series.shape[-1]))
+	for i in range(np.max(parcel)):
+		g[i,:] = np.nanmean(subject_time_series[parcel==i+1],axis = 0)
+	g = np.corrcoef(g)
+	if fisher == True:
+		g = np.arctanh(g)
+	if out_file != None:
+		np.save(out_file,g)
 	del subject_time_series
 	return g
 
