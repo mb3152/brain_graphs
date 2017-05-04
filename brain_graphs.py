@@ -59,7 +59,6 @@ class brain_graph:
 		pc_array = np.zeros(VC.graph.vcount())
 		for node in range(VC.graph.vcount()):
 		    assert np.isclose(VC.graph.strength(node,weights='weight'),np.nansum(node_degree_by_community[node]))
-		    # node_degree = np.nansum(node_degree_by_community[node])
 		    node_degree = VC.graph.strength(node,weights='weight')
 		    if node_degree == 0.0: 
 		        pc_array[node]= np.nan
@@ -76,7 +75,6 @@ class brain_graph:
 			comm_std = np.std(node_degree_by_community[comm,comm_idx],dtype=np.float64)
 			comm_mean = np.mean(node_degree_by_community[comm,comm_idx],dtype=np.float64)
 			for node in comm:
-				# node_degree = np.nansum(node_degree_by_community[node])
 				node_degree = VC.graph.strength(node,weights='weight')
 				comm_node_degree = node_degree_by_community[node,comm_idx]
 				if node_degree == 0.0:
@@ -379,7 +377,7 @@ def matrix_to_igraph(matrix,cost,binary=False,check_tri=True,interpolation='midp
 	matrix = threshold(matrix,cost,binary,check_tri,interpolation,normalize,mst)
 	g = Graph.Weighted_Adjacency(matrix.tolist(),mode=ADJ_UNDIRECTED,attr="weight")
 	print 'Matrix converted to graph with density of: ' + str(g.density())
-	if np.diff([cost,g.density()])[0] > .005:
+	if abs(np.diff([cost,g.density()])[0]) > .005:
 		print 'Density not %s! Did you want: ' %(cost)+ str(g.density()) + ' ?' 
 	return g
 
