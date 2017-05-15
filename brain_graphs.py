@@ -89,31 +89,14 @@ class brain_graph:
 		self.node_degree_by_community = node_degree_by_community
 		self.matrix = np.array(self.community.graph.get_adjacency(attribute='weight').data)
 
-def between_community_centrality(brain_graph,start_end_nodes,weight=False):
-	bcc_array = np.zeros(brain_graph.community.graph.vcount())
-	for node1 in range(brain_graph.community.graph.vcount()):
-		for node2 in range(brain_graph.community.graph.vcount()):
-			if node1 not in start_end_nodes or node2 not in start_end_nodes:
-				continue
-			if brain_graph.community.membership[node1] == brain_graph.community.membership[node2]:
-				continue
-			if weight == True:
-				indices = np.ix_(np.argwhere(np.array(brain_graph.community.membership)==x).reshape(-1),np.argwhere(np.array(brain_graph.community.membership)==y).reshape(-1))
-				path_weight = 1 - np.nanmean(brain_graph.matrix[indices])
-			else:
-				path_weight = 1.
-			paths = brain_graph.community.graph.get_shortest_paths(node1,node2,weights='weight',output ='vpath')[0][1:-1]
-			for p in paths:
-				bcc_array[p] = bcc_array[p] + (1*path_weight)
-	return bcc_array
-
 def coupling(data,window):
     """
-    creates a functional coupling metric from 'data'
-    using the multiplication of temporal derivatives. 
-    data: should be organized in 'time x nodes' matrix
-    smooth: smoothing parameter for dynamic coupling score
-    taken from: https://github.com/macshine/coupling/blob/master/coupling.py
+        creates a functional coupling metric from 'data'
+        data: should be organized in 'time x nodes' matrix
+        smooth: smoothing parameter for dynamic coupling score
+        # from PD
+        #By default, the result is set to the right edge of the window. 
+        This can be changed to the center of the window by setting center=True.
     """
     
     #define variables
@@ -147,10 +130,12 @@ def coupling(data,window):
 
     #temporal smoothing
     temp = np.reshape(mtd,[der,nodes*nodes])
-    sma = pd.rolling_mean(temp,window)
+    sma = pd.rolling_mean(temp,window, center = True)
     sma = np.reshape(sma,[der,nodes,nodes])
     
     return (mtd, sma)
+    
+    
 
 def make_image(atlas_path,image_path,values,fill=False):
 	image = nib.load(atlas_path)
@@ -161,43 +146,6 @@ def make_image(atlas_path,image_path,values,fill=False):
 		value_data[image_data==ix+1] = i
 	image_data[:,:,:,] = value_data[:,:,:,]
 	nib.save(image,image_path)
-
-def clean_up_membership(partition,matrix,min_community_size):
-	for min_community_size in range(2,min_community_size+1):
-		small_nodes = []
-		small_communities = []
-		membership = []
-		for node in range(len(partition.membership)):
-			if partition.sizes(partition.membership[node])[0] < min_community_size:
-				small_nodes.append(node)
-				small_communities.append(partition.membership[node])
-		for node in range(len(partition.membership)):
-			if node not in small_nodes:
-				membership.append(partition.membership[node])
-				continue
-			community_weights = []
-			for community in range(len(partition.sizes())):
-				if community not in small_communities:
-					community_weights.append(np.nansum(matrix[node][np.argwhere(np.array(partition.membership) == community)]))
-				else:
-					community_weights.append(0.0)
-			community_weights = np.array(community_weights)
-			community_weights[np.isnan(community_weights)] = 0.0
-			if np.nanmax(community_weights) == 0.0:
-				membership.append(partition.membership[node])
-				continue
-			membership.append(np.argmax(community_weights))
-		membership = np.array(membership)
-		temp_partition = VertexClustering(partition.graph, membership=membership)
-		empty = np.argwhere(np.array(temp_partition.sizes())==0).reshape(-1)
-		diff = 0
-		for e in empty:
-			over = np.argwhere(membership > (e - diff)).reshape(-1)
-			for m in over:
-				membership[m] = membership[m] - 1
-			diff = diff + 1
-		partition = VertexClustering(partition.graph, membership=membership)
-	return membership
 
 def load_graph(path_to_graph):
 	f = open(path_to_graph,'r')
