@@ -135,8 +135,6 @@ def coupling(data,window):
     
     return (mtd, sma)
     
-    
-
 def make_image(atlas_path,image_path,values,fill=False):
 	image = nib.load(atlas_path)
 	image_data = image.get_data()
